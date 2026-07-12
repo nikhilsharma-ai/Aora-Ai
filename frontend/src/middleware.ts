@@ -2,9 +2,7 @@ import { clerkMiddleware } from '@clerk/nextjs/server';
 
 // Minimal middleware — just makes Clerk auth available to all pages.
 // Route protection is handled client-side in each page's useEffect.
-const clerkProxy = clerkMiddleware();
-
-export { clerkProxy as default, clerkProxy as proxy };
+export default clerkMiddleware();
 
 export const config = {
   matcher: [
@@ -12,3 +10,4 @@ export const config = {
     '/(api|trpc)(.*)',
   ],
 };
+
