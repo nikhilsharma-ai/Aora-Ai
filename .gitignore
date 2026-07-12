@@ -1,20 +1,77 @@
-# Frontend
+# OS & System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs & Diagnostics
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.tsbuildinfo
+
+# Node.js / Frontend
+node_modules/
+.next/
+out/
+build/
+dist/
+.cache/
+next-env.d.ts
 frontend/node_modules/
 frontend/.next/
 frontend/out/
+frontend/build/
+frontend/dist/
 frontend/*.tsbuildinfo
 frontend/next-env.d.ts
+
+# Python / Backend
+venv/
+.venv/
+backend/venv/
+backend/.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+backend/__pycache__/
+backend/**/*.pyc
+
+# Databases
+*.db
+*.sqlite
+*.sqlite-journal
+*.sqlite3
+backend/aora_db.sqlite
+
+# User Uploads
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Environment variables & Local Secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+*.env
+*.env.local
+backend/.env
 frontend/.env.local
 frontend/.env*.local
 
-# Backend
-backend/venv/
-backend/__pycache__/
-backend/**/*.pyc
-backend/.env
-backend/aora_db.sqlite
-
-# General
-.DS_Store
-*.tmp
-*.log
+# IDEs & Editor Configuration
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

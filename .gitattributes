@@ -1,0 +1,8 @@
+# Exclude Next.js frontend files from GitHub language statistics
+# This forces GitHub to detect Python (backend) as the primary language of the repository
+frontend/**/* linguist-detectable=false
+frontend/** linguist-detectable=false
+*.json linguist-detectable=false
+*.mjs linguist-detectable=false
+*.ts linguist-detectable=false
+*.tsx linguist-detectable=false
