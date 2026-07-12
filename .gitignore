@@ -1,0 +1,20 @@
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+frontend/.env.local
+frontend/.env*.local
+
+# Backend
+backend/venv/
+backend/__pycache__/
+backend/**/*.pyc
+backend/.env
+backend/aora_db.sqlite
+
+# General
+.DS_Store
+*.tmp
+*.log
