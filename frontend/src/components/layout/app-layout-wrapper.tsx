@@ -16,7 +16,7 @@ export function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { isAuthenticated, initializeStore } = useAppStore();
   const { isLoaded, isSignedIn } = useAuth();
-  
+
   const { isUpgradeModalOpen, closeUpgradeModal } = useUIStore();
   const [selectedPlan, setSelectedPlan] = useState<'annual' | 'monthly'>('annual');
   const { toast } = useToast();
@@ -164,17 +164,16 @@ export function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
                 {/* Annual option */}
                 <div
                   onClick={() => setSelectedPlan('annual')}
-                  className={`relative border rounded-2xl p-4 text-center cursor-pointer transition-all flex flex-col justify-center items-center ${
-                    selectedPlan === 'annual'
+                  className={`relative border rounded-2xl p-4 text-center cursor-pointer transition-all flex flex-col justify-center items-center ${selectedPlan === 'annual'
                       ? 'border-emerald-500 bg-[#E8F8F0] shadow-2xs'
                       : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
+                    }`}
                 >
                   {/* Purple Floating Badge */}
                   <div className="absolute top-[-10px] left-1/2 -translate-x-1/2 bg-[#EAE6F4] text-[#7C3AED] border border-[#DDD6FE] text-[9px] font-extrabold px-2.5 py-0.5 rounded-full shadow-2xs whitespace-nowrap">
                     25% off
                   </div>
-                  
+
                   <span className="text-xs font-bold text-gray-700 mt-1">Annual</span>
                   <span className="text-lg md:text-xl font-bold font-display text-gray-800 mt-1.5 leading-none">
                     ₹149.00 <span className="text-[10px] text-gray-400 font-medium font-sans">/ mo</span>
@@ -187,11 +186,10 @@ export function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
                 {/* Monthly option */}
                 <div
                   onClick={() => setSelectedPlan('monthly')}
-                  className={`relative border rounded-2xl p-4 text-center cursor-pointer transition-all flex flex-col justify-center items-center ${
-                    selectedPlan === 'monthly'
+                  className={`relative border rounded-2xl p-4 text-center cursor-pointer transition-all flex flex-col justify-center items-center ${selectedPlan === 'monthly'
                       ? 'border-emerald-500 bg-[#E8F8F0] shadow-2xs'
                       : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
+                    }`}
                 >
                   <span className="text-xs font-bold text-gray-700">Monthly</span>
                   <span className="text-lg md:text-xl font-bold font-display text-gray-800 mt-1.5 leading-none">

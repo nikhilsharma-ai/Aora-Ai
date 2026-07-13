@@ -36,8 +36,6 @@ export default function SSOCallbackPage() {
         signUpFallbackRedirectUrl="/dashboard"
         signInForceRedirectUrl="/dashboard"
         signUpForceRedirectUrl="/dashboard"
-        afterSignInUrl="/dashboard"
-        afterSignUpUrl="/dashboard"
       />
     </>
   );

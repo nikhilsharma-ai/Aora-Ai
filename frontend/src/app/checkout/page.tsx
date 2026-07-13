@@ -22,7 +22,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
-  const { user: storeUser, isLoaded: isStoreLoaded } = useAppStore();
+  const { user: storeUser } = useAppStore();
   const { user: clerkUser, isLoaded: isClerkLoaded } = useUser();
   const { getToken } = useAuth();
 
