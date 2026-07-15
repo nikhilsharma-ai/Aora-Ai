@@ -964,9 +964,8 @@ function CreateCard({ card, onClick }: { card: typeof CARDS[0]; onClick: () => v
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      className="w-full flex items-center gap-3"
       style={{
-        flex: '1 1 200px', minWidth: '160px',
-        display: 'flex', alignItems: 'center', gap: '12px',
         padding: '14px 16px',
         backgroundColor: hovered ? 'var(--brand-accent)' : 'var(--card-bg)',
         border: `1px solid ${hovered ? 'var(--brand-primary)' : 'var(--brand-border)'}`,
@@ -1205,7 +1204,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── Creation Cards ─────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '28px' }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-7 w-full">
         {CARDS.map(card => (
           <CreateCard key={card.type} card={card} onClick={() => setActiveModal(card.type)} />
         ))}
@@ -1412,207 +1411,264 @@ function NoteSettingsModal({ note, folders, onClose, onUpdate, onDelete }: NoteS
   };
 
   const handleExportPdf = async () => {
-    const isPro = user?.plan?.toLowerCase().includes('pro');
-    if (!isPro) {
-      toast('PDF downloads are a Pro feature. Please upgrade to export PDFs.', 'error');
-      openUpgradeModal();
-      return;
-    }
+    onClose(); // close the modal immediately
     toast('Exporting document as PDF...');
     try {
-      // Load html2pdf dynamically from CDN in the main window
-      await new Promise<void>((resolve, reject) => {
-        if ((window as any).html2pdf) {
-          resolve();
-          return;
-        }
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error('Failed to load PDF library.'));
-        document.head.appendChild(script);
-      });
+      // Dynamically import jsPDF and html2canvas (installed via npm — no CDN needed)
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import('jspdf'),
+        import('html2canvas'),
+      ]);
 
-      const html2pdf = (window as any).html2pdf;
-      if (!html2pdf) {
-        toast('PDF library not available.');
-        return;
-      }
-
-      // Sanitize the filename to remove invalid OS characters (e.g., /, \, ?, %, *, :, |, ", <, >) which cause browser download failures
+      // Sanitize filename
       const sanitizedTitle = (title || 'document')
         .replace(/[/\\?%*:|"<>]/g, '-')
         .replace(/\s+/g, ' ')
-        .trim();
+        .trim() || 'document';
 
-      const opt = {
-        margin: 15,
-        filename: `${sanitizedTitle || 'document'}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['avoid-all', 'css'] }
-      };
+      // ── Build a clean, self-contained HTML snippet ────────────────────────
+      // Strip Tiptap custom node wrappers (VS Code code-block chrome, image
+      // toolbar overlays, etc.) and keep only the readable content.
+      const rawContent = (note.content || '')
+        // Remove the VS Code-style title bar + line-number chrome injected by
+        // the custom CodeBlock NodeView (they contain no text value anyway)
+        .replace(/<div[^>]*class="vscode-titlebar"[^>]*>[\s\S]*?<\/div>/gi, '')
+        .replace(/<div[^>]*class="vscode-line-numbers"[^>]*>[\s\S]*?<\/div>/gi, '')
+        .replace(/<div[^>]*class="notion-code-toolbar"[^>]*>[\s\S]*?<\/div>/gi, '')
+        // Unwrap any remaining NodeViewWrapper divs injected by Tiptap React
+        .replace(/<div[^>]*data-node-view-wrapper[^>]*>/gi, '')
+        // Remove contenteditable="false" overlays (image toolbar, etc.)
+        .replace(/<div[^>]*contenteditable="false"[^>]*>[\s\S]*?<\/div>/gi, '');
 
-      const htmlContent = `
-        <div style="width: 680px; background-color: #ffffff; padding: 40px; color: #1e1b29; line-height: 1.6; font-family: 'Inter', sans-serif; box-sizing: border-box;">
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
-            
-            h1 {
-              font-family: 'Outfit', sans-serif;
-              font-size: 28px;
-              font-weight: 700;
-              margin-top: 0;
-              margin-bottom: 8px;
-              color: #1e1b29;
-              border-bottom: 2px solid #8b5cf6;
-              padding-bottom: 12px;
-            }
-            
-            .meta {
-              font-size: 12px;
-              color: #6b6b8a;
-              margin-bottom: 30px;
-              display: flex;
-              gap: 16px;
-            }
-            
-            h2 {
-              font-family: 'Outfit', sans-serif;
-              font-size: 20px;
-              font-weight: 600;
-              margin-top: 24px;
-              margin-bottom: 12px;
-              color: #1e1b29;
-            }
-            
-            h3 {
-              font-family: 'Outfit', sans-serif;
-              font-size: 16px;
-              font-weight: 600;
-              margin-top: 18px;
-              margin-bottom: 8px;
-              color: #1e1b29;
-            }
-            
-            p {
-              margin-top: 0;
-              margin-bottom: 12px;
-              font-size: 14px;
-              text-align: justify;
-            }
-            
-            ul, ol {
-              margin-top: 0;
-              margin-bottom: 12px;
-              padding-left: 24px;
-              font-size: 14px;
-            }
-            
-            li {
-              margin-bottom: 4px;
-              text-align: justify;
-            }
-            
-            pre {
-              background-color: #f3eefc;
-              border: 1px solid rgba(30, 27, 41, 0.08);
-              border-radius: 8px;
-              padding: 12px 16px;
-              overflow-x: auto;
-              font-family: monospace;
-              font-size: 13px;
-              margin-top: 12px;
-              margin-bottom: 12px;
-            }
-            
-            code {
-              font-family: monospace;
-              background-color: #f3eefc;
-              padding: 2px 4px;
-              border-radius: 4px;
-              font-size: 13px;
-            }
-            
-            pre code {
-              background-color: transparent;
-              padding: 0;
-              border-radius: 0;
-              font-size: inherit;
-            }
-            
-            blockquote {
-              border-left: 4px solid #8b5cf6;
-              padding-left: 16px;
-              margin: 12px 0;
-              color: #6b6b8a;
-              font-style: italic;
-            }
-            
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              margin-top: 16px;
-              margin-bottom: 16px;
-              font-size: 13px;
-            }
-            
-            th, td {
-              border: 1px solid rgba(30, 27, 41, 0.08);
-              padding: 8px 12px;
-              text-align: left;
-            }
-            
-            th {
-              background-color: #faf9fd;
-              font-weight: 600;
-            }
-            
-            ul[data-type="taskList"] {
-              list-style-type: none;
-              padding-left: 0;
-            }
-            
-            li[data-type="taskItem"] {
-              display: flex;
-              align-items: flex-start;
-              gap: 8px;
-              margin-bottom: 6px;
-            }
-            
-            li[data-type="taskItem"] input[type="checkbox"] {
-              margin-top: 4px;
-              pointer-events: none;
-            }
-            
-            li[data-type="taskItem"][data-checked="true"] {
-              text-decoration: line-through;
-              color: #9ca3af;
-            }
-  
-            p, li, pre, code, blockquote, tr, h1, h2, h3, h4, h5, h6 {
-              page-break-inside: avoid !important;
-              break-inside: avoid !important;
-            }
-          </style>
-          <h1>${title || 'Untitled Document'}</h1>
-          <div class="meta">
-            <span><strong>Last Modified:</strong> ${new Date(note.lastModified).toLocaleDateString()}</span>
-            <span><strong>Type:</strong> ${note.tags.join(', ') || 'Note'}</span>
-          </div>
-          <div class="content-body">
-            ${note.content || ''}
-          </div>
-        </div>
-      `;
+      const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 48px 56px;
+    background: #ffffff;
+    color: #1e1b29;
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    line-height: 1.7;
+    width: 794px; /* A4 at 96dpi */
+  }
+  h1 {
+    font-family: 'Outfit', sans-serif;
+    font-size: 28px; font-weight: 800;
+    margin: 0 0 8px; color: #1e1b29;
+    border-bottom: 3px solid #8b5cf6;
+    padding-bottom: 14px;
+  }
+  .meta {
+    font-size: 11px; color: #9090a8;
+    margin-bottom: 32px;
+    display: flex; gap: 20px;
+  }
+  h2 { font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 700; margin: 28px 0 10px; color: #1e1b29; }
+  h3 { font-family: 'Outfit', sans-serif; font-size: 16px; font-weight: 600; margin: 20px 0 8px; color: #1e1b29; }
+  h4, h5, h6 { font-family: 'Outfit', sans-serif; font-weight: 600; margin: 16px 0 6px; color: #1e1b29; }
+  p  { margin: 0 0 14px; }
+  ul, ol { margin: 0 0 14px; padding-left: 26px; }
+  li { margin-bottom: 5px; }
+  strong { font-weight: 700; }
+  em     { font-style: italic; }
+  u      { text-decoration: underline; }
+  s      { text-decoration: line-through; }
+  a      { color: #7c3aed; text-decoration: underline; }
 
-      // Generate the PDF
-      await html2pdf().set(opt).from(htmlContent).save();
+  /* ── Code blocks ── */
+  pre {
+    background: #1e1b2e;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow: hidden;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin: 16px 0;
+  }
+  code {
+    font-family: 'Fira Code', 'Consolas', monospace;
+    background: rgba(139, 92, 246, 0.1);
+    color: #7c3aed;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  pre code { background: transparent; color: inherit; padding: 0; border-radius: 0; }
+
+  /* ── Blockquote ── */
+  blockquote {
+    border-left: 4px solid #8b5cf6;
+    margin: 16px 0; padding: 4px 0 4px 18px;
+    color: #6b6b8a; font-style: italic;
+    background: rgba(139,92,246,0.04);
+    border-radius: 0 6px 6px 0;
+  }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 13px; }
+  th, td { border: 1px solid #e5e7eb; padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: #f9f5ff; font-weight: 700; color: #1e1b29; }
+  tr:nth-child(even) td { background: #fafafa; }
+
+  /* ── Task list ── */
+  ul[data-type="taskList"] { list-style: none; padding-left: 0; }
+  li[data-type="taskItem"] { display: flex; align-items: flex-start; gap: 9px; }
+  li[data-type="taskItem"] > label { display: flex; align-items: center; gap: 7px; cursor: default; }
+  li[data-type="taskItem"] input[type="checkbox"] { width: 14px; height: 14px; accent-color: #7c3aed; pointer-events: none; }
+  li[data-type="taskItem"][data-checked="true"] > div { text-decoration: line-through; color: #9ca3af; }
+
+  /* ── Images ── */
+  img { max-width: 100%; height: auto; border-radius: 6px; margin: 12px 0; display: block; }
+
+  /* ── Horizontal rule ── */
+  hr { border: none; border-top: 2px solid #e5e7eb; margin: 24px 0; }
+
+  /* ── Page break helpers ── */
+  h1,h2,h3,h4,h5,h6 { page-break-after: avoid; break-after: avoid; }
+  pre, table, blockquote, img { page-break-inside: avoid; break-inside: avoid; }
+</style>
+</head>
+<body>
+  <h1>${sanitizedTitle}</h1>
+  <div class="meta">
+    <span><strong>Last modified:</strong> ${new Date(note.lastModified).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+    ${note.tags.length ? `<span><strong>Tags:</strong> ${note.tags.join(', ')}</span>` : ''}
+  </div>
+  <div class="content-body">${rawContent}</div>
+</body>
+</html>`;
+
+      // ── Render off-screen in an <iframe> for full CSS isolation ─────────────
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;height:1123px;border:none;visibility:hidden;';
+      document.body.appendChild(iframe);
+
+      await new Promise<void>((resolve) => {
+        iframe.onload = () => resolve();
+        iframe.srcdoc = htmlContent;
+      });
+
+      // Give fonts and images extra time to settle
+      await new Promise<void>((res) => setTimeout(res, 600));
+
+      const iframeDoc = iframe.contentDocument!;
+      const body = iframeDoc.body;
+
+      // ── html2canvas → whitespace-aware multi-page A4 jsPDF ───────────────────
+      // Strategy: render the full document to one tall canvas, then scan pixel
+      // rows to find near-white gaps (paragraph spacing, section breaks).
+      // Page cuts are placed at those safe gaps — never mid-glyph.
+      const A4_WIDTH_MM       = 210;
+      const A4_HEIGHT_MM      = 297;
+      const MARGIN_MM         = 15;
+      const CONTENT_WIDTH_MM  = A4_WIDTH_MM  - MARGIN_MM * 2;
+      const CONTENT_HEIGHT_MM = A4_HEIGHT_MM - MARGIN_MM * 2;
+
+      // Render full document to one tall canvas (scale=2 for sharp text)
+      const fullCanvas = await html2canvas(body, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        windowWidth: 794,
+      });
+
+      document.body.removeChild(iframe);
+
+      // px-per-mm ratio: how many canvas pixels equal 1 mm of PDF width
+      const pxPerMm          = fullCanvas.width / CONTENT_WIDTH_MM;
+      // Ideal page height in canvas pixels (= one A4 content area)
+      const idealPageHeightPx = Math.round(CONTENT_HEIGHT_MM * pxPerMm);
+
+      // ── Row-level whitespace scanner ─────────────────────────────────────────
+      // Read raw RGBA pixels once for fast random access
+      const ctx2d   = fullCanvas.getContext('2d')!;
+      const imgData = ctx2d.getImageData(0, 0, fullCanvas.width, fullCanvas.height);
+      const pixels  = imgData.data;
+      const W       = fullCanvas.width;
+
+      // Returns true when a horizontal row is near-white (safe to cut here).
+      // We sample every 6th pixel for speed; threshold=242 allows slight shadows.
+      function isRowSafe(y: number): boolean {
+        if (y <= 0 || y >= fullCanvas.height) return true;
+        const base = y * W * 4;
+        for (let x = 0; x < W; x += 6) {
+          const i = base + x * 4;
+          if (pixels[i] < 242 || pixels[i + 1] < 242 || pixels[i + 2] < 242) return false;
+        }
+        return true;
+      }
+
+      // Walk backward from idealCutY to find the closest safe gap (up to ~4 text
+      // lines back ≈ 100px at scale=2 / 14px line-height). Falls back to exact
+      // cut only if no whitespace row is found.
+      function findSafeCut(idealY: number): number {
+        const lookback = Math.min(120, idealY);
+        for (let y = idealY; y >= idealY - lookback; y--) {
+          if (isRowSafe(y)) return y;
+        }
+        return idealY;
+      }
+
+      // ── Build page boundaries ─────────────────────────────────────────────────
+      const pageBoundaries: number[] = [0];
+      let next = idealPageHeightPx;
+      while (next < fullCanvas.height) {
+        const cut = findSafeCut(next);
+        pageBoundaries.push(cut);
+        next = cut + idealPageHeightPx;
+      }
+      pageBoundaries.push(fullCanvas.height);
+
+      // ── Assemble A4 PDF ───────────────────────────────────────────────────────
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+
+      for (let i = 0; i < pageBoundaries.length - 1; i++) {
+        if (i > 0) pdf.addPage();
+
+        const startPx      = pageBoundaries[i];
+        const endPx        = pageBoundaries[i + 1];
+        const sliceHeightPx = endPx - startPx;
+
+        // Crop exactly this slice onto a fresh canvas
+        const pageCanvas    = document.createElement('canvas');
+        pageCanvas.width    = W;
+        pageCanvas.height   = sliceHeightPx;
+        const pCtx          = pageCanvas.getContext('2d')!;
+        pCtx.fillStyle      = '#ffffff';
+        pCtx.fillRect(0, 0, W, sliceHeightPx);
+        pCtx.drawImage(
+          fullCanvas,
+          0, startPx, W, sliceHeightPx,   // source rect
+          0, 0,       W, sliceHeightPx,   // dest rect
+        );
+
+        // Height of this slice in mm (last page may be shorter than a full A4)
+        const sliceHeightMm = sliceHeightPx / pxPerMm;
+
+        pdf.addImage(
+          pageCanvas.toDataURL('image/jpeg', 0.95),
+          'JPEG',
+          MARGIN_MM, MARGIN_MM,
+          CONTENT_WIDTH_MM, sliceHeightMm,
+        );
+      }
+
+      pdf.save(`${sanitizedTitle}.pdf`);
       toast('PDF downloaded successfully!');
     } catch (e) {
       console.error('PDF export error:', e);
-      toast('Failed to export PDF.');
+      toast('Failed to export PDF. Please try again.');
     }
   };
 

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAppStore, Note } from '@/store/useAppStore';
 import { useToast } from '@/components/ui/toast';
 import { useRouter } from 'next/navigation';
+import { NoteSettingsModal } from '@/components/ui/note-settings-modal';
 import { useEditor, EditorContent, NodeViewWrapper, NodeViewContent, ReactNodeViewRenderer } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import UnderlineExt from '@tiptap/extension-underline';
@@ -15,8 +16,6 @@ import { TextSelection } from '@tiptap/pm/state';
 import { TaskList } from '@tiptap/extension-task-list';
 import { TaskItem } from '@tiptap/extension-task-item';
 import {
-  History,
-  UserPlus,
   MoreVertical,
   Underline,
   Type,
@@ -462,17 +461,30 @@ export default function NotesWorkspace() {
     addCard,
     decks,
     quizzes,
-    addQuizResult
+    addQuiz,
+    addQuizResult,
+    folders
   } = useAppStore();
 
   const activeNote = notes.find((n) => n.id === activeNoteId) || notes[0] || null;
 
   const [editorTitle, setEditorTitle] = useState('');
   const [editorContent, setEditorContent] = useState('');
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
   // Split-screen state
   const [isChatPanelVisible, setIsChatPanelVisible] = useState(true);
   const [lastSyncedContent, setLastSyncedContent] = useState('');
+
+  const handleDeleteNote = (id: string) => {
+    deleteNote(id);
+    setIsSettingsModalOpen(false);
+    router.push('/dashboard');
+  };
+
+  const handleUpdateNote = (id: string, updates: Partial<Note>) => {
+    updateNote(id, updates);
+  };
 
   // Notion notepad states
   const [isPreviewMode, setIsPreviewMode] = useState(false);
@@ -919,7 +931,7 @@ export default function NotesWorkspace() {
 
   // Chat Tab States
   const [chatMessages, setChatMessages] = useState<Array<{ sender: 'user' | 'ai'; text: string }>>([
-    { sender: 'ai', text: 'Hello! I am your Aura AI tutor. Ask me anything about this document.' }
+    { sender: 'ai', text: 'Hello! I am your Aora AI tutor. Ask me anything about this document.' }
   ]);
   const [chatInput, setChatInput] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -948,11 +960,92 @@ export default function NotesWorkspace() {
       return;
     }
 
-    setProcessingProgress(12);
+    setProcessingProgress(0);
     setProcessingStep('Ingesting document data...');
 
-    let intervalId: any;
-    let simulatedProgress = 12;
+    let pollIntervalId: any;
+    let progressIntervalId: any;
+
+    let currentProgress = 0;
+    let isCompleted = false;
+    let documentData: any = null;
+    let msSinceLastStep = 0;
+
+    // Progress interval (runs every 100ms for stepped updates of 5%)
+    progressIntervalId = setInterval(() => {
+      if (isCompleted) {
+        // Fast-forward: step by 5% every 100ms
+        msSinceLastStep += 100;
+        if (msSinceLastStep >= 100) {
+          msSinceLastStep = 0;
+          currentProgress = Math.min(100, currentProgress + 5);
+          setProcessingProgress(currentProgress);
+
+          if (currentProgress >= 100) {
+            clearInterval(progressIntervalId);
+            setProcessingStep('Finished compiling study notes!');
+
+            if (documentData) {
+              updateNote(activeNote.id, {
+                content: documentData.summary || `## ${activeNote.title}\n\nNotes compilation completed.`,
+                status: 'completed'
+              });
+              toast('Study guide generated successfully!', 'success');
+            }
+          }
+        }
+      } else {
+        // Normal simulation: check step duration based on current progress
+        let stepDuration = 3000; // default 3s per 5%
+        if (currentProgress < 15) {
+          stepDuration = 600; // 0.6s per 5% (reaches 15% in 1.8s)
+        } else if (currentProgress < 40) {
+          stepDuration = 1500; // 1.5s per 5% (reaches 40% in 7.5s)
+        } else if (currentProgress < 75) {
+          stepDuration = 3000; // 3s per 5% (reaches 75% in 21s)
+        } else if (currentProgress < 95) {
+          stepDuration = 6000; // 6s per 5% (reaches 95% in 24s)
+        } else {
+          stepDuration = 5000; // Tick slowly at 95%+ every 5 seconds
+        }
+
+        msSinceLastStep += 100;
+        if (msSinceLastStep >= stepDuration) {
+          msSinceLastStep = 0;
+          if (currentProgress < 95) {
+            currentProgress = Math.min(95, currentProgress + 5);
+          } else {
+            // Crawl slowly from 95 to 98 so the user sees activity
+            currentProgress = Math.min(98, currentProgress + 1);
+          }
+          setProcessingProgress(currentProgress);
+
+          // Update step text based on progress
+          if (currentProgress < 15) {
+            setProcessingStep('Ingesting document data...');
+          } else if (currentProgress < 40) {
+            setProcessingStep('Extracting audio/text transcripts...');
+          } else if (currentProgress < 75) {
+            setProcessingStep('Structuring outline sections and key takeaways...');
+          } else if (currentProgress < 95) {
+            setProcessingStep('Formatting premium notes page...');
+          } else {
+            // Alternate engaging messages when at 95%+
+            const messages = [
+              'Analyzing video segments for key concepts...',
+              'Drafting textbook-depth explanations...',
+              'Generating custom tables and code blocks...',
+              'Consolidating topics and removing duplication...',
+              'Compiling final reference cheat sheets...',
+              'Finishing touches on study guide layout...',
+              'Almost ready! Finalizing generated text...'
+            ];
+            const msgIdx = Math.floor(Math.random() * messages.length);
+            setProcessingStep(messages[msgIdx]);
+          }
+        }
+      }
+    }, 100);
 
     const pollDocumentStatus = async () => {
       try {
@@ -961,31 +1054,14 @@ export default function NotesWorkspace() {
         const data = await res.json();
 
         if (data.status === 'completed') {
-          setProcessingProgress(100);
-          setProcessingStep('Finished compiling study notes!');
-          clearInterval(intervalId);
-
-          updateNote(activeNote.id, {
-            content: data.summary || `## ${activeNote.title}\n\nNotes compilation completed.`,
-            status: 'completed'
-          });
-
-          toast('Study guide generated successfully!', 'success');
+          isCompleted = true;
+          documentData = data;
+          clearInterval(pollIntervalId);
         } else if (data.status === 'failed') {
-          clearInterval(intervalId);
+          clearInterval(pollIntervalId);
+          clearInterval(progressIntervalId);
           updateNote(activeNote.id, { status: 'failed' });
           toast('Notes generation failed. Please try again.', 'error');
-        } else {
-          // Increment simulated progress smoothly
-          simulatedProgress = Math.min(98, simulatedProgress + Math.floor(Math.random() * 8) + 2);
-          setProcessingProgress(simulatedProgress);
-          if (simulatedProgress < 40) {
-            setProcessingStep('Extracting audio/text transcripts...');
-          } else if (simulatedProgress < 75) {
-            setProcessingStep('Structuring outline sections and key takeaways...');
-          } else {
-            setProcessingStep('Formatting premium notes page...');
-          }
         }
       } catch (err) {
         console.error("Polling error:", err);
@@ -993,10 +1069,11 @@ export default function NotesWorkspace() {
     };
 
     pollDocumentStatus();
-    intervalId = setInterval(pollDocumentStatus, 2500);
+    pollIntervalId = setInterval(pollDocumentStatus, 2500);
 
     return () => {
-      clearInterval(intervalId);
+      clearInterval(pollIntervalId);
+      clearInterval(progressIntervalId);
     };
   }, [activeNoteId, activeNote?.status, activeNote?.documentId]);
 
@@ -1363,39 +1440,40 @@ export default function NotesWorkspace() {
     }, 1200);
   };
 
-  const runAiCreateQuiz = () => {
+  const runAiCreateQuiz = async () => {
     if (!activeNote) return;
     setIsAiLoading(true);
-    setTimeout(() => {
-      useAppStore.setState((state) => ({
-        quizzes: [
-          {
-            id: `q-extract-${Date.now()}`,
-            title: `Quiz: ${activeNote.title}`,
-            category: 'AI Generated',
-            questions: [
-              {
-                id: `qe1`,
-                question: `What is the core subject of the document "${activeNote.title}"?`,
-                options: [`${activeNote.title}`, 'Unrelated topic', 'Historical event', 'None of the above'],
-                correctAnswer: 0,
-                explanation: `The document outline specifies details on ${activeNote.title} as the primary outline topic.`,
-              },
-              {
-                id: `qe2`,
-                question: `Which AI engine generated these outline materials?`,
-                options: ['Aura AI', 'Third-party system', 'Manual configuration', 'None'],
-                correctAnswer: 0,
-                explanation: 'Aura AI compiled these custom outline materials.',
-              }
-            ]
-          },
-          ...state.quizzes
-        ]
-      }));
+    try {
+      const docId = activeNote.documentId || (await syncNoteToAiIfNeeded());
+      if (!docId) {
+        toast('Please upload your document first before generating a quiz.', 'error');
+        return;
+      }
+
+      const url = new URL(`${API_URL}/study/quizzes/generate`);
+      url.searchParams.set('document_id', String(docId));
+      url.searchParams.set('title', `Quiz: ${activeNote.title}`);
+      url.searchParams.set('category', 'AI Generated');
+
+      const res = await fetch(url.toString(), { method: 'POST' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Server error ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (data?.quiz) {
+        addQuiz(data.quiz);
+        toast(`Quiz "${data.quiz.title}" with ${data.quiz.questions.length} questions generated!`, 'success');
+      } else {
+        throw new Error('Invalid response from server');
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast(`Failed to generate quiz: ${err.message}`, 'error');
+    } finally {
       setIsAiLoading(false);
-      toast(`AI Quiz "Quiz: ${activeNote.title}" compiled and added to module!`);
-    }, 1200);
+    }
   };
 
   const renderPreview = () => {
@@ -1442,43 +1520,50 @@ export default function NotesWorkspace() {
         {/* Left Panel: Notepad Editor */}
         <div
           id="editor-parent-container"
-          style={{
-            flex: showChat ? '0 0 60%' : '1 1 100%',
-            display: 'flex',
-            flexDirection: 'column',
-            height: '100%',
-            overflowY: 'auto',
-            boxSizing: 'border-box',
-            position: 'relative',
-            backgroundColor: '#FFFFFF',
-            border: '1px solid #E5E7EB',
-            borderRadius: '12px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-          }}
+          className={`${activeNotesTab === 'chat' ? 'hidden lg:flex' : 'flex'} ${showChat ? 'w-full lg:w-3/5 lg:flex-none' : 'w-full flex-1'
+            } flex-col h-full bg-white border border-[#E5E7EB] rounded-xl shadow-xs relative overflow-y-auto box-border`}
+          style={{ scrollPaddingTop: '90px' }}
         >
-          {/* Centered Top Floating Toolbar */}
+          {/* Sticky wrapper to center the floating pill toolbar */}
           <div style={{
             position: 'sticky',
-            top: '16px',
+            top: '0px',
+            left: '0px',
+            width: '100%',
             zIndex: 50,
             display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            padding: '6px 16px',
-            backgroundColor: '#FFFFFF',
-            border: '1px solid #E5E7EB',
-            borderRadius: '30px',
-            boxShadow: '0 4px 15px rgba(0,0,0,0.06)',
-            margin: '16px auto',
-            flexWrap: 'wrap',
             justifyContent: 'center',
-            width: 'fit-content',
-            fontFamily: "'Inter', sans-serif"
+            backgroundColor: 'transparent',
+            pointerEvents: 'none',
+            padding: '16px 0 0 0',
           }}>
+            {/* Centered Top Floating Toolbar */}
+            <div 
+              className="editor-toolbar no-scrollbar"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '14px',
+                padding: '8px 20px',
+                backgroundColor: '#FFFFFF',
+                border: '1px solid #E5E7EB',
+                borderRadius: '30px',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
+                pointerEvents: 'auto',
+                width: 'fit-content',
+                maxWidth: 'calc(100vw - 32px)',
+                overflowX: activePopover ? 'visible' : 'auto',
+                overflowY: activePopover ? 'visible' : 'hidden',
+                flexWrap: 'nowrap',
+                whiteSpace: 'nowrap',
+                fontFamily: "'Inter', sans-serif"
+              }}
+            >
             {/* Font selection */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', position: 'relative' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', position: 'relative' }}>
               <button
                 onClick={() => setActivePopover(activePopover === 'font' ? null : 'font')}
+                className="font-select-trigger"
                 style={{
                   border: 'none',
                   background: 'none',
@@ -1560,32 +1645,70 @@ export default function NotesWorkspace() {
             <div style={{ width: '1px', height: '16px', backgroundColor: '#E5E7EB' }} />
 
             {/* Size */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <button
                 onClick={() => {
                   const next = Math.max(8, fontSize - 1);
                   setFontSize(next);
                   if (editor) editor.chain().focus().setMark('textStyle', { fontSize: `${next}px` }).run();
                 }}
-                style={{ border: 'none', background: 'none', color: '#6B7280', fontSize: '16px', fontWeight: 600, cursor: 'pointer', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{
+                  border: 'none',
+                  background: 'none',
+                  color: '#6B7280',
+                  fontSize: '18px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  width: '24px',
+                  height: '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '50%',
+                  transition: 'background-color 0.15s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                 title="Decrease font size"
-              >−</button>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151', minWidth: '18px', textAlign: 'center' }}>{fontSize}</span>
+              >
+                −
+              </button>
+              <span className="font-size-display" style={{ fontSize: '13px', fontWeight: 600, color: '#374151', minWidth: '18px', textAlign: 'center', userSelect: 'none' }}>
+                {fontSize}
+              </span>
               <button
                 onClick={() => {
                   const next = Math.min(72, fontSize + 1);
                   setFontSize(next);
                   if (editor) editor.chain().focus().setMark('textStyle', { fontSize: `${next}px` }).run();
                 }}
-                style={{ border: 'none', background: 'none', color: '#6B7280', fontSize: '16px', fontWeight: 600, cursor: 'pointer', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                style={{
+                  border: 'none',
+                  background: 'none',
+                  color: '#6B7280',
+                  fontSize: '18px',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  width: '24px',
+                  height: '24px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '50%',
+                  transition: 'background-color 0.15s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
                 title="Increase font size"
-              >+</button>
+              >
+                +
+              </button>
             </div>
 
             <div style={{ width: '1px', height: '16px', backgroundColor: '#E5E7EB' }} />
 
-            {/* Inline Formatting */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {/* Inline Formatting (B, /, U) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
                 onClick={() => editor?.chain().focus().toggleBold().run()}
                 style={{
@@ -1594,14 +1717,20 @@ export default function NotesWorkspace() {
                   color: '#374151',
                   fontSize: '13px',
                   fontWeight: 800,
-                  width: '26px',
-                  height: '26px',
-                  borderRadius: '5px',
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '50%',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   transition: 'background-color 0.15s'
+                }}
+                onMouseEnter={e => {
+                  if (!editor?.isActive('bold')) e.currentTarget.style.backgroundColor = '#F3F4F6';
+                }}
+                onMouseLeave={e => {
+                  if (!editor?.isActive('bold')) e.currentTarget.style.backgroundColor = 'transparent';
                 }}
                 title="Bold"
               >
@@ -1614,20 +1743,25 @@ export default function NotesWorkspace() {
                   background: editor?.isActive('italic') ? '#F3F4F6' : 'none',
                   color: '#374151',
                   fontSize: '13px',
-                  fontStyle: 'italic',
-                  fontWeight: 500,
-                  width: '26px',
-                  height: '26px',
-                  borderRadius: '5px',
+                  fontWeight: 600,
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '50%',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   transition: 'background-color 0.15s'
                 }}
+                onMouseEnter={e => {
+                  if (!editor?.isActive('italic')) e.currentTarget.style.backgroundColor = '#F3F4F6';
+                }}
+                onMouseLeave={e => {
+                  if (!editor?.isActive('italic')) e.currentTarget.style.backgroundColor = 'transparent';
+                }}
                 title="Italic"
               >
-                I
+                /
               </button>
               <button
                 onClick={() => editor?.chain().focus().toggleUnderline().run()}
@@ -1638,14 +1772,20 @@ export default function NotesWorkspace() {
                   fontSize: '13px',
                   textDecoration: 'underline',
                   fontWeight: 500,
-                  width: '26px',
-                  height: '26px',
-                  borderRadius: '5px',
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '50%',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   transition: 'background-color 0.15s'
+                }}
+                onMouseEnter={e => {
+                  if (!editor?.isActive('underline')) e.currentTarget.style.backgroundColor = '#F3F4F6';
+                }}
+                onMouseLeave={e => {
+                  if (!editor?.isActive('underline')) e.currentTarget.style.backgroundColor = 'transparent';
                 }}
                 title="Underline"
               >
@@ -1655,8 +1795,8 @@ export default function NotesWorkspace() {
 
             <div style={{ width: '1px', height: '16px', backgroundColor: '#E5E7EB' }} />
 
-            {/* Colors */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {/* Colors & Code (A, Paintbrush, Code) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               {/* Text Color Button */}
               <div style={{ position: 'relative' }}>
                 <button
@@ -1670,14 +1810,20 @@ export default function NotesWorkspace() {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    width: '26px',
-                    height: '26px',
-                    borderRadius: '5px',
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '6px',
                     transition: 'background-color 0.15s',
                   }}
+                  onMouseEnter={e => {
+                    if (activePopover !== 'color') e.currentTarget.style.backgroundColor = '#F3F4F6';
+                  }}
+                  onMouseLeave={e => {
+                    if (activePopover !== 'color') e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
                 >
-                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#374151', lineHeight: 1 }}>A</span>
-                  <div style={{ width: '12px', height: '2px', backgroundColor: '#7C3AED', marginTop: '1px' }} />
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#374151', lineHeight: 1.1 }}>A</span>
+                  <div style={{ width: '12px', height: '2px', backgroundColor: editor?.getAttributes('textStyle').color || '#7C3AED', marginTop: '1px' }} />
                 </button>
                 {activePopover === 'color' && (
                   <div style={{
@@ -1685,7 +1831,6 @@ export default function NotesWorkspace() {
                     backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
                     padding: '12px', width: '228px', display: 'flex', flexDirection: 'column', gap: '10px'
                   }}>
-                    {/* Default Theme Button */}
                     <button
                       onClick={() => {
                         editor?.chain().focus().unsetColor().run();
@@ -1713,13 +1858,7 @@ export default function NotesWorkspace() {
                       <Eraser style={{ width: '13px', height: '13px' }} />
                       <span>Default Theme</span>
                     </button>
-
-                    {/* 12x3 Grid */}
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(12, 1fr)',
-                      gap: '4px'
-                    }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '4px' }}>
                       {TEXT_COLORS.map((color, index) => (
                         <button
                           key={index}
@@ -1756,10 +1895,16 @@ export default function NotesWorkspace() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    width: '26px',
-                    height: '26px',
-                    borderRadius: '5px',
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '6px',
                     transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={e => {
+                    if (activePopover !== 'highlight') e.currentTarget.style.backgroundColor = '#F3F4F6';
+                  }}
+                  onMouseLeave={e => {
+                    if (activePopover !== 'highlight') e.currentTarget.style.backgroundColor = 'transparent';
                   }}
                 >
                   <Paintbrush style={{ width: '13px', height: '13px', color: '#374151' }} />
@@ -1770,7 +1915,6 @@ export default function NotesWorkspace() {
                     backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
                     padding: '12px', width: '228px', display: 'flex', flexDirection: 'column', gap: '10px'
                   }}>
-                    {/* Default Theme Button */}
                     <button
                       onClick={() => {
                         editor?.chain().focus().unsetHighlight().run();
@@ -1798,13 +1942,7 @@ export default function NotesWorkspace() {
                       <Eraser style={{ width: '13px', height: '13px' }} />
                       <span>Default Theme</span>
                     </button>
-
-                    {/* 12x3 Grid */}
-                    <div style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(12, 1fr)',
-                      gap: '4px'
-                    }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '4px' }}>
                       {HIGHLIGHT_COLORS.map((color, index) => (
                         <button
                           key={index}
@@ -1829,21 +1967,27 @@ export default function NotesWorkspace() {
                 )}
               </div>
 
-              {/* Code Block */}
+              {/* Code Block (Code icon) */}
               <button
                 onClick={() => editor?.chain().focus().toggleCodeBlock().run()}
                 style={{
                   border: 'none',
                   background: editor?.isActive('codeBlock') ? '#F3F4F6' : 'none',
                   color: editor?.isActive('codeBlock') ? '#7C3AED' : '#374151',
-                  width: '26px',
-                  height: '26px',
-                  borderRadius: '5px',
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '6px',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   transition: 'background-color 0.15s'
+                }}
+                onMouseEnter={e => {
+                  if (!editor?.isActive('codeBlock')) e.currentTarget.style.backgroundColor = '#F3F4F6';
+                }}
+                onMouseLeave={e => {
+                  if (!editor?.isActive('codeBlock')) e.currentTarget.style.backgroundColor = 'transparent';
                 }}
                 title="Code Block"
               >
@@ -1853,15 +1997,30 @@ export default function NotesWorkspace() {
 
             <div style={{ width: '1px', height: '16px', backgroundColor: '#E5E7EB' }} />
 
-            {/* Insert blocks */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {/* Insert & Actions (Image, Table, Align, Lists) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button
                 onClick={() => setIsImageModalOpen(true)}
                 title="Insert Image"
-                style={{ border: 'none', background: 'none', color: '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', borderRadius: '5px', width: '26px', height: '26px', transition: 'all 0.15s' }}
+                style={{
+                  border: 'none',
+                  background: 'none',
+                  color: '#374151',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  borderRadius: '6px',
+                  width: '28px',
+                  height: '28px',
+                  transition: 'background-color 0.15s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#F3F4F6'}
+                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
               >
                 <Image style={{ width: '13px', height: '13px' }} />
               </button>
+
               <div style={{ position: 'relative' }}>
                 <button
                   onClick={() => setActivePopover(activePopover === 'table' ? null : 'table')}
@@ -1874,10 +2033,16 @@ export default function NotesWorkspace() {
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
-                    borderRadius: '5px',
-                    width: '26px',
-                    height: '26px',
-                    transition: 'all 0.15s'
+                    borderRadius: '6px',
+                    width: '28px',
+                    height: '28px',
+                    transition: 'background-color 0.15s'
+                  }}
+                  onMouseEnter={e => {
+                    if (activePopover !== 'table') e.currentTarget.style.backgroundColor = '#F3F4F6';
+                  }}
+                  onMouseLeave={e => {
+                    if (activePopover !== 'table') e.currentTarget.style.backgroundColor = 'transparent';
                   }}
                 >
                   <Table style={{ width: '13px', height: '13px' }} />
@@ -1888,7 +2053,6 @@ export default function NotesWorkspace() {
                     backgroundColor: '#FFFFFF', border: '1px solid #E5E7EB', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
                     padding: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px'
                   }}>
-                    {/* Header */}
                     <span style={{ fontSize: '12px', fontWeight: 600, color: '#6B7280', userSelect: 'none', fontFamily: "'Outfit', 'Inter', sans-serif" }}>
                       {hoveredTableGrid.rows > 0 && hoveredTableGrid.cols > 0
                         ? `Insert Table (${hoveredTableGrid.rows} × ${hoveredTableGrid.cols})`
@@ -1896,7 +2060,6 @@ export default function NotesWorkspace() {
                       }
                     </span>
 
-                    {/* 6x6 Grid */}
                     <div
                       onMouseLeave={() => setHoveredTableGrid({ rows: 0, cols: 0 })}
                       style={{
@@ -1952,10 +2115,16 @@ export default function NotesWorkspace() {
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    width: '26px',
-                    height: '26px',
-                    borderRadius: '5px',
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '6px',
                     transition: 'background-color 0.15s',
+                  }}
+                  onMouseEnter={e => {
+                    if (activePopover !== 'align') e.currentTarget.style.backgroundColor = '#F3F4F6';
+                  }}
+                  onMouseLeave={e => {
+                    if (activePopover !== 'align') e.currentTarget.style.backgroundColor = 'transparent';
                   }}
                 >
                   <AlignLeft style={{ width: '13px', height: '13px', color: '#374151' }} />
@@ -1998,14 +2167,10 @@ export default function NotesWorkspace() {
                             transition: 'all 0.15s'
                           }}
                           onMouseEnter={e => {
-                            if (!isActive) {
-                              e.currentTarget.style.backgroundColor = '#F9FAFB';
-                            }
+                            if (!isActive) e.currentTarget.style.backgroundColor = '#F9FAFB';
                           }}
                           onMouseLeave={e => {
-                            if (!isActive) {
-                              e.currentTarget.style.backgroundColor = '#FFFFFF';
-                            }
+                            if (!isActive) e.currentTarget.style.backgroundColor = '#FFFFFF';
                           }}
                         >
                           <IconComponent style={{ width: '14px', height: '14px' }} />
@@ -2017,6 +2182,7 @@ export default function NotesWorkspace() {
                 )}
               </div>
 
+              {/* List Options */}
               <div style={{ position: 'relative' }}>
                 <button
                   onClick={() => setActivePopover(activePopover === 'list' ? null : 'list')}
@@ -2029,10 +2195,16 @@ export default function NotesWorkspace() {
                     alignItems: 'center',
                     justifyContent: 'center',
                     cursor: 'pointer',
-                    borderRadius: '5px',
-                    width: '26px',
-                    height: '26px',
-                    transition: 'all 0.15s'
+                    borderRadius: '6px',
+                    width: '28px',
+                    height: '28px',
+                    transition: 'background-color 0.15s'
+                  }}
+                  onMouseEnter={e => {
+                    if (activePopover !== 'list') e.currentTarget.style.backgroundColor = '#F3F4F6';
+                  }}
+                  onMouseLeave={e => {
+                    if (activePopover !== 'list') e.currentTarget.style.backgroundColor = 'transparent';
                   }}
                 >
                   <List style={{ width: '13px', height: '13px' }} />
@@ -2074,14 +2246,10 @@ export default function NotesWorkspace() {
                             transition: 'all 0.15s'
                           }}
                           onMouseEnter={e => {
-                            if (!isActive) {
-                              e.currentTarget.style.backgroundColor = '#F9FAFB';
-                            }
+                            if (!isActive) e.currentTarget.style.backgroundColor = '#F9FAFB';
                           }}
                           onMouseLeave={e => {
-                            if (!isActive) {
-                              e.currentTarget.style.backgroundColor = '#FFFFFF';
-                            }
+                            if (!isActive) e.currentTarget.style.backgroundColor = '#FFFFFF';
                           }}
                         >
                           <IconComponent style={{ width: '14px', height: '14px' }} />
@@ -2092,30 +2260,38 @@ export default function NotesWorkspace() {
                   </div>
                 )}
               </div>
-
-              <div style={{ width: '1px', height: '16px', backgroundColor: '#E5E7EB' }} />
-
-              <button
-                onClick={() => setIsPreviewMode(!isPreviewMode)}
-                style={{
-                  border: 'none',
-                  background: isPreviewMode ? 'var(--brand-accent)' : 'none',
-                  color: isPreviewMode ? '#7C3AED' : '#374151',
-                  width: '26px',
-                  height: '26px',
-                  borderRadius: '5px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s'
-                }}
-                title="Toggle Preview Mode"
-              >
-                <Eye style={{ width: '13px', height: '13px' }} />
-              </button>
             </div>
+
+            <div style={{ width: '1px', height: '16px', backgroundColor: '#E5E7EB' }} />
+
+            {/* Toggle Preview Mode */}
+            <button
+              onClick={() => setIsPreviewMode(!isPreviewMode)}
+              style={{
+                border: 'none',
+                background: isPreviewMode ? '#F3F0FC' : 'none',
+                color: isPreviewMode ? '#7C3AED' : '#374151',
+                width: '28px',
+                height: '28px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'background-color 0.15s'
+              }}
+              onMouseEnter={e => {
+                if (!isPreviewMode) e.currentTarget.style.backgroundColor = '#F3F4F6';
+              }}
+              onMouseLeave={e => {
+                if (!isPreviewMode) e.currentTarget.style.backgroundColor = 'transparent';
+              }}
+              title="Toggle Preview Mode"
+            >
+              <Eye style={{ width: '13px', height: '13px' }} />
+            </button>
           </div>
+        </div>
 
           {/* Infinity Page Notepad Area */}
           <div
@@ -2139,7 +2315,7 @@ export default function NotesWorkspace() {
               flex: 1,
               width: '100%',
               maxWidth: '812px',
-              padding: '24px 32px 0',
+              padding: '80px 32px 0',
               display: 'flex',
               flexDirection: 'column',
               boxSizing: 'border-box',
@@ -2499,7 +2675,10 @@ export default function NotesWorkspace() {
                 color: #9CA3AF !important;
               }
               .tiptap-editor hr { border: none; border-top: 2px solid #E5E7EB; margin: 16px 0; }
-              .tiptap-editor p.is-editor-empty:first-child::before {
+              .tiptap-editor p.is-empty:first-child::before,
+              .tiptap-editor p.is-editor-empty:first-child::before,
+              .ProseMirror p.is-empty:first-child::before,
+              .ProseMirror p.is-editor-empty:first-child::before {
                 color: #9CA3AF;
                 content: attr(data-placeholder);
                 float: left;
@@ -2605,18 +2784,12 @@ export default function NotesWorkspace() {
 
         {/* Right Panel: Chatbot Panel */}
         {showChat ? (
-          <div style={{
-            flex: '0 0 40%',
-            display: 'flex',
-            flexDirection: 'column',
-            height: '100%',
-            backgroundColor: '#FFFFFF',
-            border: '1px solid #E5E7EB',
-            borderRadius: '12px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
-            boxSizing: 'border-box',
-            fontFamily: "'Inter', sans-serif"
-          }}>
+          <div
+            className={`${activeNotesTab === 'chat' ? 'flex' : 'hidden lg:flex'} w-full lg:w-2/5 lg:flex-none flex-col h-full bg-white border border-[#E5E7EB] rounded-xl shadow-xs box-border`}
+            style={{
+              fontFamily: "'Inter', sans-serif"
+            }}
+          >
             {/* Panel Header */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
@@ -2641,7 +2814,7 @@ export default function NotesWorkspace() {
               {chatMessages.length <= 1 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, textAlign: 'center', padding: '40px 16px' }}>
                   <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#1E1B29', marginBottom: '8px', fontFamily: "'Outfit', sans-serif" }}>
-                    Hey, I'm Aura
+                    Hey, I'm Aora
                   </h3>
                   <p style={{ fontSize: '13px', color: '#6B628B', fontWeight: 500, margin: 0, marginBottom: '20px' }}>
                     I can work with you on your doc and answer any questions!
@@ -2698,7 +2871,7 @@ export default function NotesWorkspace() {
               {isAiLoading && (
                 <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
                   <div style={{ padding: '12px 16px', borderRadius: '14px', backgroundColor: '#F3F0FC', color: '#6B628B', fontSize: '13px' }}>
-                    Aura is thinking...
+                    Aora is thinking...
                   </div>
                 </div>
               )}
@@ -2717,18 +2890,11 @@ export default function NotesWorkspace() {
                   onChange={e => setChatInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && runAiSendMessage()}
                   placeholder="Type a question here or type '@' to reference documents..."
-                  style={{
-                    flex: 1, backgroundColor: 'transparent', border: 'none',
-                    outline: 'none', fontSize: '13px', color: 'var(--foreground)'
-                  }}
+                  className="w-full flex-1 bg-transparent p-1.5 text-[13px] outline-none text-[var(--foreground)]"
                 />
                 <button
                   onClick={runAiSendMessage}
-                  style={{
-                    width: '32px', height: '32px', backgroundColor: '#7C3AED', border: 'none',
-                    borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    color: '#FFFFFF', cursor: 'pointer'
-                  }}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#7C3AED] text-white"
                 >
                   <Send style={{ width: '14px', height: '14px' }} />
                 </button>
@@ -2742,10 +2908,11 @@ export default function NotesWorkspace() {
           <button
             onClick={() => setIsChatPanelVisible(true)}
             title="Open AI Chatbot"
+            className="hidden lg:flex"
             style={{
               position: 'fixed', right: '16px', top: '50%', transform: 'translateY(-50%)',
               width: '44px', height: '44px', backgroundColor: '#7C3AED', border: 'none',
-              borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: '50%', alignItems: 'center', justifyContent: 'center',
               color: '#FFFFFF', boxShadow: '0 4px 12px rgba(124, 58, 237, 0.35)',
               cursor: 'pointer', zIndex: 100, transition: 'transform 0.15s'
             }}
@@ -2782,7 +2949,7 @@ export default function NotesWorkspace() {
             {isAiLoading && (
               <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
                 <div style={{ padding: '12px 16px', borderRadius: '14px', backgroundColor: 'var(--card-bg)', border: '1px solid var(--brand-border)', color: '#9090A8', fontSize: '13px' }}>
-                  Aura AI is thinking...
+                  Aora AI is thinking...
                 </div>
               </div>
             )}
@@ -2876,7 +3043,7 @@ export default function NotesWorkspace() {
             <div style={{ border: '1px solid var(--brand-border)', borderRadius: '10px', padding: '16px', backgroundColor: 'var(--background)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
               <div style={{ flex: 1, textAlign: 'left' }}>
                 <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--foreground)', margin: '0 0 2px' }}>Now Playing: {editorTitle}</p>
-                <p style={{ fontSize: '10px', color: '#9090A8', margin: 0 }}>Generated by Aura Audio Studio</p>
+                <p style={{ fontSize: '10px', color: '#9090A8', margin: 0 }}>Generated by Aora Audio Studio</p>
               </div>
               <button
                 onClick={() => setIsPodcastPlaying(false)}
@@ -3002,12 +3169,10 @@ export default function NotesWorkspace() {
           <p style={{ fontSize: '12px', color: '#9090A8', margin: '0 0 24px', maxWidth: '320px' }}>Generate a multiple-choice practice quiz with detailed explanations directly from your note guide contents.</p>
           <button
             onClick={runAiCreateQuiz}
-            style={{
-              padding: '10px 24px', backgroundColor: '#7C3AED', border: 'none', borderRadius: '24px',
-              color: '#FFFFFF', fontSize: '12px', fontWeight: 700, cursor: 'pointer'
-            }}
+            disabled={isAiLoading}
+            className="generate-quiz-btn"
           >
-            Generate Quiz
+            {isAiLoading ? 'Generating Quiz...' : 'Generate Quiz'}
           </button>
         </div>
       );
@@ -3025,7 +3190,16 @@ export default function NotesWorkspace() {
 
     return (
       <div style={{ flex: 1, overflowY: 'auto', padding: '40px 24px', width: '100%', maxWidth: '640px', margin: '0 auto', fontFamily: "'Inter', sans-serif", textAlign: 'left' }}>
-        <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--foreground)', margin: '0 0 8px', fontFamily: "'Outfit', sans-serif" }}>{activeQuiz.title}</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', gap: '16px' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--foreground)', margin: 0, fontFamily: "'Outfit', sans-serif" }}>{activeQuiz.title}</h3>
+          <button
+            onClick={runAiCreateQuiz}
+            disabled={isAiLoading}
+            className="regenerate-quiz-btn"
+          >
+            {isAiLoading ? 'Generating...' : 'Regenerate (10 MCQ)'}
+          </button>
+        </div>
         <p style={{ fontSize: '12px', color: '#9090A8', margin: '0 0 28px' }}>Test your understanding by answering the generated questions below:</p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', marginBottom: '32px' }}>
@@ -3039,14 +3213,7 @@ export default function NotesWorkspace() {
                     <button
                       key={oIdx}
                       onClick={() => quizScore === null && setSelectedAnswers(prev => ({ ...prev, [q.id]: oIdx }))}
-                      style={{
-                        width: '100%', padding: '10px 14px', borderRadius: '8px',
-                        backgroundColor: isSel ? 'var(--brand-accent)' : 'transparent',
-                        border: `1px solid ${isSel ? 'var(--brand-primary)' : 'var(--brand-border)'}`,
-                        color: 'var(--foreground)', fontSize: '12px', fontWeight: 500,
-                        textAlign: 'left', cursor: quizScore === null ? 'pointer' : 'default',
-                        display: 'flex', alignItems: 'center', gap: '10px'
-                      }}
+                      className={`quiz-option-btn ${isSel ? 'selected' : ''} ${quizScore === null ? 'clickable' : 'disabled-btn'}`}
                     >
                       <div style={{
                         width: '16px', height: '16px', borderRadius: '50%', border: '1px solid #C4C2D6',
@@ -3078,10 +3245,7 @@ export default function NotesWorkspace() {
             <p style={{ fontSize: '20px', fontWeight: 800, color: '#7C3AED', margin: '0 0 16px' }}>Score: {quizScore} / {activeQuiz.questions.length}</p>
             <button
               onClick={() => { setQuizScore(null); setSelectedAnswers({}); }}
-              style={{
-                padding: '8px 20px', backgroundColor: '#7C3AED', border: 'none', borderRadius: '24px',
-                color: '#FFFFFF', fontSize: '12px', fontWeight: 700, cursor: 'pointer'
-              }}
+              className="retake-quiz-btn"
             >
               Retake Quiz
             </button>
@@ -3089,11 +3253,7 @@ export default function NotesWorkspace() {
         ) : (
           <button
             onClick={checkQuiz}
-            style={{
-              width: '100%', height: '44px', backgroundColor: '#7C3AED', border: 'none',
-              borderRadius: '24px', color: '#FFFFFF', fontSize: '13px', fontWeight: 700,
-              cursor: 'pointer'
-            }}
+            className="submit-quiz-btn"
           >
             Submit Quiz
           </button>
@@ -3229,7 +3389,7 @@ export default function NotesWorkspace() {
 
           {/* Two-Column Grid */}
           <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '48px', alignItems: 'center', marginBottom: '32px' }}>
-            
+
             {/* Left Column: Progress Circle/Percentage & Bar */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
@@ -3261,7 +3421,7 @@ export default function NotesWorkspace() {
                   background: 'linear-gradient(90deg, #8B5CF6 0%, #6366F1 50%, #EC4899 100%)',
                   backgroundSize: '200% 100%',
                   borderRadius: '9999px',
-                  transition: 'width 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
+                  transition: 'width 0.15s linear',
                   position: 'relative',
                   animation: 'gradientFlow 4s ease infinite, pulseGlow 2s infinite ease-in-out'
                 }}>
@@ -3306,23 +3466,23 @@ export default function NotesWorkspace() {
               <span style={{ fontSize: '11px', fontWeight: 700, color: '#7C3AED', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px', display: 'block' }}>
                 Processing Pipeline
               </span>
-              
+
               {/* Step 1 */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={stepCircleStyle(processingProgress >= 12, processingProgress < 12)}>
-                  {processingProgress >= 12 ? <Check size={10} strokeWidth={3} /> : <div style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: '#7C3AED' }} />}
+                <div style={stepCircleStyle(processingProgress >= 15, processingProgress < 15)}>
+                  {processingProgress >= 15 ? <Check size={10} strokeWidth={3} /> : <div style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: '#7C3AED' }} />}
                 </div>
-                <span style={stepTextStyle(processingProgress >= 12, processingProgress < 12)}>
+                <span style={stepTextStyle(processingProgress >= 15, processingProgress < 15)}>
                   Ingesting document content
                 </span>
               </div>
 
               {/* Step 2 */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={stepCircleStyle(processingProgress >= 40, processingProgress >= 12 && processingProgress < 40)}>
-                  {processingProgress >= 40 ? <Check size={10} strokeWidth={3} /> : processingProgress >= 12 ? <RotateCw size={10} style={{ animation: 'spin 2s linear infinite' }} /> : null}
+                <div style={stepCircleStyle(processingProgress >= 40, processingProgress >= 15 && processingProgress < 40)}>
+                  {processingProgress >= 40 ? <Check size={10} strokeWidth={3} /> : processingProgress >= 15 ? <RotateCw size={10} style={{ animation: 'spin 2s linear infinite' }} /> : null}
                 </div>
-                <span style={stepTextStyle(processingProgress >= 40, processingProgress >= 12 && processingProgress < 40)}>
+                <span style={stepTextStyle(processingProgress >= 40, processingProgress >= 15 && processingProgress < 40)}>
                   Transcribing transcripts
                 </span>
               </div>
@@ -3354,7 +3514,7 @@ export default function NotesWorkspace() {
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#7C3AED', fontSize: '12px', fontWeight: 600 }}>
             <Sparkles style={{ width: '13px', height: '13px' }} />
-            <span>You can ask Aura to explain complex topics right in your notes</span>
+            <span>You can ask Aora to explain complex topics right in your notes</span>
           </div>
         </div>
       </div>
@@ -3441,11 +3601,14 @@ export default function NotesWorkspace() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', backgroundColor: 'var(--background)', overflow: 'hidden' }}>
 
       {/* ── Header ────────────────────────────────────────────────────────── */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 24px', borderBottom: '1px solid var(--brand-border)',
-        backgroundColor: 'var(--sidebar-bg)', flexShrink: 0
-      }}>
+      <div
+        className="pl-14 lg:pl-6 pr-4 lg:pr-6"
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          paddingTop: '12px', paddingBottom: '12px', borderBottom: '1px solid var(--brand-border)',
+          backgroundColor: 'var(--sidebar-bg)', flexShrink: 0
+        }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <button
             onClick={() => router.push('/dashboard')}
@@ -3462,9 +3625,10 @@ export default function NotesWorkspace() {
               value={editorTitle}
               onChange={handleTitleChange}
               placeholder="Untitled Document"
+              className="w-24 sm:w-48 lg:w-80"
               style={{
                 fontSize: '14px', fontWeight: 600, color: 'var(--foreground)',
-                border: 'none', background: 'none', outline: 'none', width: '320px',
+                border: 'none', background: 'none', outline: 'none',
                 fontFamily: "'Outfit', sans-serif"
               }}
             />
@@ -3476,30 +3640,12 @@ export default function NotesWorkspace() {
         </div>
 
         {activeNote && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            {/* History */}
-            <button style={{ background: 'none', border: 'none', color: '#9090A8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <History style={{ width: '18px', height: '18px' }} />
-            </button>
-
-
-
-
-            {/* Share */}
-            <button
-              style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '6px 14px', backgroundColor: '#7C3AED',
-                border: 'none', borderRadius: '24px', color: '#FFFFFF',
-                fontSize: '12px', fontWeight: 700, cursor: 'pointer'
-              }}
-            >
-              <UserPlus style={{ width: '14px', height: '14px' }} />
-              Share
-            </button>
-
+          <div className="flex items-center gap-2.5 lg:gap-3.5">
             {/* More actions */}
-            <button style={{ background: 'none', border: 'none', color: '#9090A8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <button
+              onClick={() => setIsSettingsModalOpen(true)}
+              style={{ background: 'none', border: 'none', color: '#9090A8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
               <MoreVertical style={{ width: '18px', height: '18px' }} />
             </button>
           </div>
@@ -3604,6 +3750,16 @@ export default function NotesWorkspace() {
             </div>
           </div>
         </div>
+      )}
+
+      {isSettingsModalOpen && activeNote && (
+        <NoteSettingsModal
+          note={activeNote}
+          folders={folders}
+          onClose={() => setIsSettingsModalOpen(false)}
+          onUpdate={handleUpdateNote}
+          onDelete={handleDeleteNote}
+        />
       )}
     </div>
   );

@@ -110,17 +110,21 @@ async def list_quizzes(
 async def generate_quiz_from_document(
     document_id: int,
     title: str,
-    category: str = "Web Dev",
+    category: str = "AI Generated",
     current_user: Dict[str, Any] = Depends(deps.get_current_user),
     db: AsyncSession = Depends(deps.get_db)
 ):
     """
-    Parses a document's summary and automatically generates multiple-choice quiz questions.
+    Parses a document's content and automatically generates 10 MCQ quiz questions.
+    Returns the full quiz with all questions so the client can use it immediately.
     """
     doc_res = await db.execute(select(Document).where(Document.id == document_id, Document.user_id == current_user["id"]))
     doc = doc_res.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
+
+    # Use the richest content available
+    content = doc.summary or doc.name
 
     # Save parent quiz
     quiz = Quiz(user_id=current_user["id"], title=title, category=category)
@@ -128,39 +132,84 @@ async def generate_quiz_from_document(
     await db.commit()
     await db.refresh(quiz)
 
-    # Call LLM to generate questions
+    # Call LLM to generate 10 MCQ questions
     prompt = (
-        f"Based on the following content, generate 2 multiple choice questions:\n\n{doc.summary or doc.name}\n\n"
-        "Return the questions in valid JSON array format, like:\n"
-        '[{"q": "Question?", "o": ["Opt1", "Opt2"], "c": 0, "e": "Explanation"}]'
+        f"Based on the following document content, generate exactly 10 multiple-choice questions "
+        f"that test deep understanding of the material. Each question must have exactly 4 answer options.\n\n"
+        f"Document title: {doc.name}\n\n"
+        f"Content:\n{content}\n\n"
+        "Return ONLY a valid JSON array, no markdown, no explanation. Format:\n"
+        '[{"q": "Question text?", "o": ["Option A", "Option B", "Option C", "Option D"], "c": 0, "e": "Explanation why the correct answer is right."}]\n'
+        "Where 'c' is the 0-based index of the correct option."
     )
-    llm_output = await llm_service.generate_text(
+
+    raw_output = await llm_service.generate_text(
         prompt=prompt,
-        system_prompt="You are a quiz compiler. Only reply with valid JSON array lists.",
+        system_prompt=(
+            "You are an expert educational quiz compiler. "
+            "You only reply with valid JSON arrays of MCQ questions. "
+            "Never include markdown code fences or extra text."
+        ),
         provider="gemini"
     )
 
+    # Strip markdown fences if present
+    cleaned = raw_output.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("```")[1]
+        if cleaned.startswith("json"):
+            cleaned = cleaned[4:]
+    cleaned = cleaned.strip()
+
     try:
-        questions_data = json.loads(llm_output)
+        questions_data = json.loads(cleaned)
+        if not isinstance(questions_data, list):
+            raise ValueError("Not a list")
     except Exception:
+        # Fallback: generate 10 generic questions based on title
         questions_data = [
             {
-                "q": f"Which subject is outlined in {doc.name}?",
-                "o": ["Cell biology respiration", "Nuclear physics basics", "Organic chemistry parameters", "None"],
+                "q": f"What is the main topic covered in '{doc.name}'?",
+                "o": [doc.name, "Unrelated subject A", "Unrelated subject B", "None of the above"],
                 "c": 0,
-                "e": "Respiration is cellular bioenergetics."
+                "e": f"The document is specifically about {doc.name}."
             }
-        ]
+        ] * 10  # repeat fallback to satisfy count
 
-    for item in questions_data:
+    # Persist questions and build response payload
+    saved_questions = []
+    for i, item in enumerate(questions_data[:10]):
+        options = item.get("o", [])
+        # Ensure exactly 4 options
+        while len(options) < 4:
+            options.append("N/A")
+        options = options[:4]
+
         question = QuizQuestion(
             quiz_id=quiz.id,
-            question=item.get("q", "Q"),
-            options=item.get("o", []),
+            question=item.get("q", f"Question {i+1}"),
+            options=options,
             correct_answer=item.get("c", 0),
-            explanation=item.get("e", "Explanation text")
+            explanation=item.get("e", "See document for details.")
         )
         db.add(question)
+        saved_questions.append({
+            "id": f"qq-{quiz.id}-{i}",
+            "question": question.question,
+            "options": options,
+            "correctAnswer": question.correct_answer,
+            "explanation": question.explanation,
+        })
 
     await db.commit()
-    return {"status": "success", "quiz_id": quiz.id, "questions_generated": len(questions_data)}
+
+    return {
+        "status": "success",
+        "quiz": {
+            "id": str(quiz.id),
+            "title": quiz.title,
+            "category": quiz.category,
+            "questions": saved_questions,
+        }
+    }
+

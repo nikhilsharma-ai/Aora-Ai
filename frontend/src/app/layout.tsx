@@ -5,8 +5,11 @@ import QueryProvider from '@/components/layout/query-provider';
 import { AppLayoutWrapper } from '@/components/layout/app-layout-wrapper';
 
 export const metadata: Metadata = {
-  title: 'Aura AI — AI That Understands You',
+  title: 'Aora AI — AI That Understands You',
   description: 'A premium AI-powered learning, research, and productivity platform that adapts to your workflow.',
+  icons: {
+    icon: '/icon.svg',
+  },
 };
 
 export const viewport: Viewport = {

@@ -20,7 +20,16 @@ class Settings(BaseSettings):
     @property
     def ASYNC_DATABASE_URL(self) -> str:
         if self.DATABASE_URL:
-            return self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+            url = self.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
+            if "sslmode=" in url:
+                import urllib.parse
+                parsed = urllib.parse.urlparse(url)
+                query = urllib.parse.parse_qs(parsed.query)
+                if 'sslmode' in query:
+                    del query['sslmode']
+                new_query = urllib.parse.urlencode(query, doseq=True)
+                url = urllib.parse.urlunparse(parsed._replace(query=new_query))
+            return url
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_SERVER}/{self.POSTGRES_DB}"
 
     # Clerk Authentication
@@ -45,6 +54,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     GEMINI_API_KEY: Optional[str] = None
+    GROQ_API_KEY: Optional[str] = None
     ELEVENLABS_API_KEY: Optional[str] = None
 
     # Razorpay Billing Configuration

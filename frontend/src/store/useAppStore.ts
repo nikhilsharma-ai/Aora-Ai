@@ -129,6 +129,7 @@ interface AppState {
   activePersona: 'academic' | 'tutor' | 'creative';
   addChat: (title: string) => string;
   deleteChat: (id: string) => void;
+  renameChat: (id: string, title: string) => void;
   sendMessage: (chatId: string, text: string) => Promise<void>;
   setActiveChatId: (id: string | null) => void;
   setActivePersona: (persona: 'academic' | 'tutor' | 'creative') => void;
@@ -143,6 +144,7 @@ interface AppState {
   // Quizzes
   quizzes: Quiz[];
   quizResults: QuizResult[];
+  addQuiz: (quiz: Quiz) => void;
   addQuizResult: (quizId: string, quizTitle: string, score: number, total: number) => void;
 
   // Mind Maps
@@ -158,8 +160,8 @@ interface AppState {
   addPodcast: (title: string, hostA: string, hostB: string, sourceText: string) => Promise<void>;
 
   // Note Workspace Tab
-  activeNotesTab: 'document' | 'chat' | 'podcast' | 'flashcards' | 'quiz';
-  setActiveNotesTab: (tab: 'document' | 'chat' | 'podcast' | 'flashcards' | 'quiz') => void;
+  activeNotesTab: 'document' | 'chat' | 'quiz' | 'podcast' | 'flashcards';
+  setActiveNotesTab: (tab: 'document' | 'chat' | 'quiz' | 'podcast' | 'flashcards') => void;
 
   // Folders
   folders: Folder[];
@@ -495,6 +497,9 @@ export const useAppStore = create<AppState>((set, get) => {
     chats: state.chats.filter((c) => c.id !== id),
     activeChatId: state.activeChatId === id ? (state.chats.length > 1 ? state.chats[0].id : null) : state.activeChatId,
   })),
+  renameChat: (id, title) => set((state) => ({
+    chats: state.chats.map((c) => c.id === id ? { ...c, title } : c),
+  })),
   sendMessage: async (chatId, text) => {
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const userMsg: ChatMessage = {
@@ -511,9 +516,17 @@ export const useAppStore = create<AppState>((set, get) => {
     }));
 
     try {
-      const response = await fetch(`${API_URL}/chat/threads/1/messages?text=${encodeURIComponent(text)}`, {
-        method: 'POST'
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60-second timeout
+      let response: Response;
+      try {
+        response = await fetch(`${API_URL}/chat/threads/1/messages?text=${encodeURIComponent(text)}`, {
+          method: 'POST',
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
       const data = await response.json();
       
       const aiMsg: ChatMessage = {
@@ -633,6 +646,9 @@ export const useAppStore = create<AppState>((set, get) => {
   // Quizzes state & logic
   quizzes: [],
   quizResults: [],
+  addQuiz: (quiz) => set((state) => ({
+    quizzes: [quiz, ...state.quizzes],
+  })),
   addQuizResult: (quizId, quizTitle, score, total) => set((state) => ({
     quizResults: [
       {

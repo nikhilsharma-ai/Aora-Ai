@@ -97,21 +97,24 @@ async def send_chat_message(
         })
 
     # 3. Formulate prompts
-    # 3. Formulate prompts
     if context_str:
         system_prompt = (
-            f"You are Aora AI configured in '{chat.persona}' persona mode. "
-            "Formulate a synthesis response answering the user. "
-            "Strictly cite information using [index] markers when using the supplied context below."
+            "You are Aora AI, a precise and knowledgeable assistant. "
+            "Answer the user's query directly and concisely using the supplied context. "
+            "Be factual, structured, and to the point. "
+            "Use [index] citation markers only when quoting specific context blocks. "
+            "Do NOT add filler phrases or unnecessary introductions."
         )
-        user_prompt = f"Context files:{context_str}\n\nUser Query: {text}"
+        user_prompt = f"Context:{context_str}\n\nQuestion: {text}"
     else:
         system_prompt = (
-            f"You are Aora AI configured in '{chat.persona}' persona mode. "
-            "Formulate a helpful response answering the user's query directly using your general knowledge, "
-            "as no context files are currently supplied."
+            "You are Aora AI, a precise and knowledgeable assistant. "
+            "Answer the user's question directly, concisely, and accurately using your general knowledge. "
+            "Structure your answer clearly with key points. "
+            "Do NOT add filler phrases, unnecessary disclaimers, or repeat the question back. "
+            "Get straight to the answer."
         )
-        user_prompt = f"User Query: {text}"
+        user_prompt = text
 
     # 4. Generate LLM response text
     ai_response_text = await llm_service.generate_text(

@@ -1,4 +1,6 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Form, status
+import asyncio
+import threading
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from typing import List, Dict, Any, Optional
@@ -33,7 +35,6 @@ async def list_user_documents(
 
 @router.post("/upload", response_model=Dict[str, Any])
 async def upload_document(
-    background_tasks: BackgroundTasks,
     name: str = Form(...),
     doc_type: str = Form(...), # pdf, doc, youtube, mp3, note
     file_url: Optional[str] = Form(None),
@@ -117,9 +118,10 @@ async def upload_document(
     try:
         process_document_task.delay(new_doc.id, user_id)
     except Exception:
-        # Fallback: use FastAPI BackgroundTasks when Celery/Redis is unavailable (local dev)
+        # Fallback: run directly as an asyncio task on the server's running event loop
+        # to avoid event loop conflicts when accessing the database connection pool.
         from app.workers.tasks import _async_process_document
-        background_tasks.add_task(_async_process_document, new_doc.id, user_id)
+        asyncio.create_task(_async_process_document(new_doc.id, user_id))
 
     return {
         "status": "processing",

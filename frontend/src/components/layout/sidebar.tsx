@@ -9,20 +9,14 @@ import { useAppStore } from '@/store/useAppStore';
 import { useUIStore } from '@/store/useUIStore';
 import {
   Home,
-  BookOpen,
   Settings,
   ChevronsLeft,
   ChevronsRight,
   Menu,
   X,
   Pencil,
-  Sun,
-  Moon,
-  Monitor,
   FileText,
   MessageSquare,
-  Mic,
-  Layers,
   HelpCircle,
 } from 'lucide-react';
 
@@ -35,8 +29,6 @@ export const navigationItems = [
 export const workspaceItems = [
   { name: 'Document', tab: 'document' as const, icon: FileText },
   { name: 'Chat Bot', tab: 'chat' as const, icon: MessageSquare },
-  { name: 'Podcast', tab: 'podcast' as const, icon: Mic },
-  { name: 'Flashcards', tab: 'flashcards' as const, icon: Layers },
   { name: 'Quiz', tab: 'quiz' as const, icon: HelpCircle },
 ];
 
@@ -57,8 +49,6 @@ export function Sidebar() {
   const sidebarBase: React.CSSProperties = {
     backgroundColor: 'var(--sidebar-bg)',
     borderRight: '1px solid var(--brand-border)',
-    display: 'flex',
-    flexDirection: 'column',
     height: '100vh',
     position: 'sticky' as const,
     top: 0,
@@ -166,7 +156,7 @@ export function Sidebar() {
           <motion.aside
             initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="md:hidden"
+            className="flex flex-col md:hidden"
             style={{ ...sidebarBase, position: 'fixed', top: 0, bottom: 0, left: 0, width: '260px', zIndex: 50 }}
           >
             {/* Logo */}

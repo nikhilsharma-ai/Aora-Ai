@@ -48,6 +48,11 @@ class VectorService:
             return
 
         try:
+            import uuid
+            # Qdrant requires point IDs to be unsigned integers or UUIDs (not arbitrary strings)
+            # We use a deterministic UUID v5 so the same chunk always maps to the same ID
+            _NS = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")  # standard URL namespace
+
             # Generate vectors (using a simple mock embedding or OpenAI API)
             vectors = []
             points = []
@@ -55,8 +60,11 @@ class VectorService:
                 # Simulated 1536-dim vector for local checks, fallback to mock
                 simulated_vector = [0.01 * (idx % 10)] * 1536
                 
+                # Deterministic UUID derived from document_id + chunk index
+                point_id = str(uuid.uuid5(_NS, f"{document_id}-{idx}"))
+
                 points.append({
-                    "id": f"doc-{document_id}-chunk-{idx}",
+                    "id": point_id,
                     "vector": simulated_vector,
                     "payload": {
                         "document_id": document_id,

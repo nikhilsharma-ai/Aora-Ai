@@ -39,19 +39,26 @@ def generate_podcast_task(podcast_id: int, user_id: str, topic: str):
 def markdown_to_html(md: str) -> str:
     import re
     
-    # 0. Clean up multiple consecutive spaces (4 or more) to prevent database/UI bloat
-    md = re.sub(r" {4,}", " ", md)
-    # Collapse multiple consecutive newlines (3 or more) to at most 2 newlines
-    md = re.sub(r"\n{3,}", "\n\n", md)
-
-    # 1. Parse code blocks
-    def replace_code_block(match):
-        lang = match.group(1) or "plaintext"
-        code = match.group(2).strip()
-        code = code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-        return f'<pre><code class="language-{lang}">{code}</code></pre>'
+    # Normalize newlines
+    md = md.replace("\r\n", "\n").replace("\r", "\n")
     
-    html = re.sub(r"```(\w*)\n(.*?)\n```", replace_code_block, md, flags=re.DOTALL)
+    # 1. Extract and preserve code blocks (to avoid stripping their spaces or parsing markdown inside them)
+    code_blocks = []
+    def save_code_block(match):
+        lang = match.group(1) or "plaintext"
+        code = match.group(2)
+        # HTML escape special characters inside the code
+        code_html = code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        placeholder = f"<!--CODEBLOCK_{len(code_blocks)}-->"
+        code_blocks.append(f'<pre><code class="language-{lang}">{code_html}</code></pre>')
+        return placeholder
+    
+    # Match code blocks: ```[lang]\n[code]\n```
+    html = re.sub(r"```+[ \t]*(\w*)[ \t]*\n(.*?)(?:\n[ \t]*```+[ \t]*|[ \t]*```+[ \t]*|\Z)", save_code_block, md, flags=re.DOTALL)
+    
+    # 0. Clean up multiple consecutive spaces (4 or more) and newlines on the non-code content
+    html = re.sub(r" {4,}", " ", html)
+    html = re.sub(r"\n{3,}", "\n\n", html)
     
     # 2. Parse blockquotes
     def replace_blockquote(match):
@@ -121,10 +128,19 @@ def markdown_to_html(md: str) -> str:
     lines = html.split("\n")
     for i, line in enumerate(lines):
         stripped = line.strip()
+        # Do not wrap code block placeholders
+        if stripped.startswith("<!--CODEBLOCK_") and stripped.endswith("-->"):
+            continue
         if stripped and not stripped.startswith(("<h", "<ul", "<ol", "<li", "<pre", "<code", "<blockquote", "<table", "<thead", "<tbody", "<tr", "<td", "<th", "</pre>", "</table>", "</ul>", "</ol>", "</blockquote>", "<p>", "</p>")):
             lines[i] = f"<p>{line}</p>"
             
-    return "\n".join(lines)
+    html = "\n".join(lines)
+    
+    # 8. Restore code blocks
+    for i, block_html in enumerate(code_blocks):
+        html = html.replace(f"<!--CODEBLOCK_{i}-->", block_html)
+        
+    return html
 
 
 # Helper async processes
@@ -148,8 +164,7 @@ async def _async_process_document(document_id: int, user_id: str):
     def get_youtube_transcript(video_id: str) -> tuple[str, str]:
         try:
             from youtube_transcript_api import YouTubeTranscriptApi
-            api = YouTubeTranscriptApi()
-            transcript_list = api.list(video_id)
+            transcript_list = YouTubeTranscriptApi().list(video_id)
             # Prioritize native/manual transcripts first, then auto-generated
             manual_transcripts = {}
             generated_transcripts = {}
@@ -237,235 +252,179 @@ async def _async_process_document(document_id: int, user_id: str):
             chunks.append(" ".join(current_chunk))
         return chunks
 
+    doc_type = ""
+    doc_name = ""
+    doc_file_url = ""
     async with SessionLocal() as db:
-        # Fetch document model
         result = await db.execute(select(Document).where(Document.id == document_id))
         doc = result.scalar_one_or_none()
         if not doc:
             logger.error(f"Document {document_id} not found in database.")
             return
+        doc_type = doc.doc_type
+        doc_name = doc.name
+        doc_file_url = doc.file_url
 
-        try:
-            doc_content = ""
-            formatted_transcript = ""
-            chunks = []
+    try:
+        doc_content = ""
+        formatted_transcript = ""
+        chunks = []
 
-            # Check if this is a YouTube import
-            if doc.doc_type == "youtube" and doc.file_url:
-                video_id = extract_youtube_video_id(doc.file_url)
-                if video_id:
-                    logger.info(f"Extracting YouTube transcript for video ID: {video_id}")
-                    doc_content, formatted_transcript = get_youtube_transcript(video_id)
+        # Check if this is a YouTube import
+        if doc_type == "youtube" and doc_file_url:
+            video_id = extract_youtube_video_id(doc_file_url)
+            if video_id:
+                logger.info(f"Extracting YouTube transcript for video ID: {video_id}")
+                doc_content, formatted_transcript = get_youtube_transcript(video_id)
+                
+                if not doc_content:
+                    logger.info("Transcript API failed or was empty. Trying audio extraction fallback...")
+                    from app.services.audio import audio_service
+                    import os
                     
-                    if not doc_content:
-                        logger.info("Transcript API failed or was empty. Trying audio extraction fallback...")
-                        from app.services.audio import audio_service
-                        import os
-                        
-                        audio_path = audio_service.download_youtube_audio(doc.file_url)
-                        if audio_path:
-                            try:
-                                logger.info(f"Downloaded audio to {audio_path}. Starting audio transcription...")
-                                doc_content = await audio_service.transcribe_youtube_audio(audio_path, doc.name)
-                                
-                                # Format plain text transcript with simulated 30s timestamps
-                                if doc_content:
-                                    words = doc_content.split()
-                                    words_per_segment = 60 # ~30 seconds of speech at average rate
-                                    formatted_lines = []
-                                    for idx, i in enumerate(range(0, len(words), words_per_segment)):
-                                        segment_words = words[i:i+words_per_segment]
-                                        current_time = idx * 30
-                                        minutes = current_time // 60
-                                        seconds = current_time % 60
-                                        timestamp = f"**[{minutes:02d}:{seconds:02d}]**"
-                                        formatted_lines.append(f"{timestamp} " + " ".join(segment_words))
-                                    formatted_transcript = "\n\n".join(formatted_lines)
-                            except Exception as e:
-                                logger.error(f"Error during audio fallback processing: {e}")
-                            finally:
-                                # Clean up local audio file
-                                if os.path.exists(audio_path):
-                                    try:
-                                        os.remove(audio_path)
-                                        logger.info(f"Cleaned up audio file: {audio_path}")
-                                    except Exception as cleanup_err:
-                                        logger.error(f"Failed to delete {audio_path}: {cleanup_err}")
-            # Check if this is a raw note sync
-            elif doc.doc_type == "note" and doc.file_url:
-                import os
-                if os.path.exists(doc.file_url):
-                    logger.info(f"Reading raw note text from: {doc.file_url}")
-                    with open(doc.file_url, "r", encoding="utf-8") as f:
-                        doc_content = f.read()
-            # Check if this is a local file upload (e.g. PDF/DOCX/TXT/etc.)
-            elif doc.file_url and not doc.file_url.startswith("http"):
-                import os
-                if os.path.exists(doc.file_url):
-                    logger.info(f"Reading local uploaded document: {doc.file_url}")
-                    ext = os.path.splitext(doc.file_url)[1].lower()
-                    if ext == '.pdf':
+                    audio_path = audio_service.download_youtube_audio(doc_file_url)
+                    if audio_path:
                         try:
-                            import pypdf
-                            reader = pypdf.PdfReader(doc.file_url)
-                            doc_content = ""
-                            for page in reader.pages:
-                                text = page.extract_text()
-                                if text:
-                                    doc_content += text + "\n"
-                        except Exception as pdf_err:
-                            logger.error(f"Failed to parse PDF {doc.file_url}: {pdf_err}")
-                    elif ext in ('.docx', '.doc'):
-                        try:
-                            import docx
-                            doc_obj = docx.Document(doc.file_url)
-                            doc_content = "\n".join([p.text for p in doc_obj.paragraphs])
-                        except Exception as docx_err:
-                            logger.error(f"Failed to parse DOCX {doc.file_url}: {docx_err}")
-                    else:
-                        # Fallback for plain text or other files
-                        try:
-                            with open(doc.file_url, "r", encoding="utf-8", errors="ignore") as f:
-                                doc_content = f.read()
-                        except Exception as txt_err:
-                            logger.error(f"Failed to read file {doc.file_url}: {txt_err}")
-            
-            # Fallback/Default if no content obtained from transcript or file
-            if not doc_content:
-                logger.info(f"No content extracted for document: {doc.name}. Using topic-based template.")
-                topic = doc.name
-                doc_content = (
-                    f"Tutorial overview: {topic}. "
-                    "This tutorial covers core programming concepts, data structures, algorithms, "
-                    "and practical implementation techniques used in software development."
-                )
-                chunks = [doc_content]
-            else:
-                chunks = chunk_text(doc_content, chunk_size=1000)
-
-
-            # 2. Upload vector chunks to Qdrant Vector database
-            await vector_service.upsert_chunks(
-                document_id=document_id,
-                user_id=user_id,
-                chunks=chunks
+                            logger.info(f"Downloaded audio to {audio_path}. Starting audio transcription...")
+                            doc_content = await audio_service.transcribe_youtube_audio(audio_path, doc_name)
+                            
+                            # Format plain text transcript with simulated 30s timestamps
+                            if doc_content:
+                                words = doc_content.split()
+                                words_per_segment = 60 # ~30 seconds of speech at average rate
+                                formatted_lines = []
+                                for idx, i in enumerate(range(0, len(words), words_per_segment)):
+                                    segment_words = words[i:i+words_per_segment]
+                                    current_time = idx * 30
+                                    minutes = current_time // 60
+                                    seconds = current_time % 60
+                                    timestamp = f"**[{minutes:02d}:{seconds:02d}]**"
+                                    formatted_lines.append(f"{timestamp} " + " ".join(segment_words))
+                                formatted_transcript = "\n\n".join(formatted_lines)
+                        except Exception as e:
+                            logger.error(f"Error during audio fallback processing: {e}")
+                        finally:
+                            # Clean up local audio file
+                            if os.path.exists(audio_path):
+                                try:
+                                    os.remove(audio_path)
+                                    logger.info(f"Cleaned up audio file: {audio_path}")
+                                except Exception as cleanup_err:
+                                    logger.error(f"Failed to delete {audio_path}: {cleanup_err}")
+        # Check if this is a raw note sync
+        elif doc_type == "note" and doc_file_url:
+            import os
+            if os.path.exists(doc_file_url):
+                logger.info(f"Reading raw note text from: {doc_file_url}")
+                with open(doc_file_url, "r", encoding="utf-8") as f:
+                    doc_content = f.read()
+        # Check if this is a local file upload (e.g. PDF/DOCX/TXT/etc.)
+        elif doc_file_url and not doc_file_url.startswith("http"):
+            import os
+            if os.path.exists(doc_file_url):
+                logger.info(f"Reading local uploaded document: {doc_file_url}")
+                ext = os.path.splitext(doc_file_url)[1].lower()
+                if ext == '.pdf':
+                    try:
+                        import pypdf
+                        reader = pypdf.PdfReader(doc_file_url)
+                        doc_content = ""
+                        for page in reader.pages:
+                            text = page.extract_text()
+                            if text:
+                                doc_content += text + "\n"
+                    except Exception as pdf_err:
+                        logger.error(f"Failed to parse PDF {doc_file_url}: {pdf_err}")
+                elif ext in ('.docx', '.doc'):
+                    try:
+                        import docx
+                        doc_obj = docx.Document(doc_file_url)
+                        doc_content = "\n".join([p.text for p in doc_obj.paragraphs])
+                    except Exception as docx_err:
+                        logger.error(f"Failed to parse DOCX {doc_file_url}: {docx_err}")
+                else:
+                    # Fallback for plain text or other files
+                    try:
+                        with open(doc_file_url, "r", encoding="utf-8", errors="ignore") as f:
+                            doc_content = f.read()
+                    except Exception as txt_err:
+                        logger.error(f"Failed to read file {doc_file_url}: {txt_err}")
+        
+        # Fallback/Default if no content obtained from transcript or file
+        if not doc_content:
+            logger.info(f"No content extracted for document: {doc_name}. Using topic-based template.")
+            topic = doc_name
+            doc_content = (
+                f"Tutorial overview: {topic}. "
+                "This tutorial covers core programming concepts, data structures, algorithms, "
+                "and practical implementation techniques used in software development."
             )
+            chunks = [doc_content]
+        else:
+            chunks = chunk_text(doc_content, chunk_size=1000)
 
-            # 3. Generate structured study guide with LLM or set directly for notes
-            if doc.doc_type == "note":
-                logger.info(f"Using manual note content directly for document {document_id}")
-                doc_summary = doc_content
-            elif doc.name and ("python" in doc.name.lower() or (doc.file_url and "python" in doc.file_url.lower())):
-                logger.info(f"Python topic detected for document {document_id}. Instantly generating premium template notes.")
-                doc_summary = f"""# 🟢 Python Advanced Concepts
+        # 2. Upload vector chunks to Qdrant Vector database
+        await vector_service.upsert_chunks(
+            document_id=document_id,
+            user_id=user_id,
+            chunks=chunks
+        )
 
-## Brief Overview
-This note covering **Python advanced concepts** was created from the [{doc.name}]({doc.file_url or '#'}) YouTube video. It walks you through mutable vs immutable objects, shallow and deep copying, type annotations, core OOP principles, file handling techniques, import styles, and the impact of the Global Interpreter Lock on threading versus multiprocessing.
-
-## Key Points
-- Understand how Python handles object copying and when to use shallow or deep copies.
-- Learn to write clear type-annotated functions and build classes with proper constructors, methods, and encapsulation.
-- Master file I/O operations, path handling, and module/package imports.
-- Grasp why the GIL limits true parallelism and when to choose threading or multiprocessing for your tasks.
-
-# Python Copying Concepts Overview
-
-### 📁 Mutable vs Immutable Objects
-> **Mutable objects** can have their contents changed after creation (e.g., lists, dictionaries).
-> **Immutable objects** cannot be altered once created (e.g., integers, strings, tuples).
-
-### 📄 Reference Copy (Assignment)
-> In Python, using `=` creates a **reference copy** - the new variable points to the same memory address as the original.
-
-```python
-original = [1, 2, 3]
-copy = original          # reference copy
-copy.append(100)
-print(original) # [1, 2, 3, 100] <- both changed
-```
-
-### 📄 Shallow Copy
-> A **shallow copy** creates a new outer container, but the inner elements still reference the original objects.
-
-**Ways to create a shallow copy:**
-
-| Method | Description |
-|---|---|
-| `list(original)` | Calls the list constructor. |
-| `original[:]` | Slicing syntax. |
-| `copy.copy(original)` | copy module's copy function. |
-
-```python
-import copy
-original = [1, 2, [3, 4]]
-shallow = original[:]      # shallow copy
-shallow[2].append(5)       # modifies nested list
-print(original) # [1, 2, [3, 4, 5]]
-```
-
-### 📄 Identity check
-To verify if two variables point to the same object, use the `is` operator.
-
-```python
-print(original is shallow)  # False
-print(original[2] is shallow[2])  # True <- nested elements are shared!
-```
-"""
-            else:
-                logger.info(f"Generating structured study notes using LLM for document {document_id}")
-                system_prompt = (
-                    "You are Aura AI, an expert note-taking and tutoring assistant. "
-                    "Your goal is to transform raw transcripts into beautiful, highly-structured, "
-                    "comprehensive study notes in Markdown format. Follow these instructions strictly:\n\n"
-                    "Structuring Instructions:\n"
-                    "- DEDUPLICATE CONTENT: Raw transcripts often repeat the same concepts multiple times. "
-                    "Identify these repetitions and consolidate them into a single, cohesive, comprehensive explanation.\n"
-                    "- CONCEPTUAL HIERARCHY: Organize notes logically by subtopics, NOT chronologically in the order of the video. "
-                    "Group related ideas together. Avoid writing general transcripts or linear commentary.\n"
-                    "- ELIMINATE FILLER: Completely ignore conversational fillers, sponsor segments, meta-talk (e.g., 'like and subscribe', 'welcome back', 'in the next video'), and irrelevant side-tracks.\n"
-                    "- COMPREHENSIVENESS: Provide deep, clear explanations of key terms, mechanisms, and examples instead of vague summaries.\n\n"
-                    "Formatting Rules:\n"
-                    "1. Use h1 for the main note title. Prefix sections with h2, and sub-concepts with h3. "
-                    "Prefix h3 sections with appropriate emojis (e.g., 📁, 📄, 💡, 📝, 🔧).\n"
-                    "2. Wrap important definitions or callouts in markdown blockquotes (e.g. '> **Term**: definition').\n"
-                    "3. Include comparison tables, feature tables, or method lists using standard Markdown tables (e.g. | Column 1 | Column 2 |).\n"
-                    "4. Include practical coding or practical usage examples using fenced code blocks (e.g. ```python ... ``` or ```bash ... ```)."
-                )
-                user_prompt = (
-                    f"Analyze the following transcript extracted from '{doc.name}' and create logical, structured study notes. "
-                    "Consolidate repeated topics and build an outline based on the actual concepts discussed:\n\n"
-                    f"Transcript Content:\n"
-                    f"\"\"\"\n{doc_content[:100000]}\n\"\"\"\n\n"
-                    "Please structure the output note with these sections:\n"
-                    "## Brief Overview\n"
-                    "(A concise, professional 2-3 sentence overview of the document's main focus)\n\n"
-                    "## Key Takeaways\n"
-                    "(4-6 bullet points highlighting distinct, high-impact concepts)\n\n"
-                    "## Structured Concept Deep Dive\n"
-                    "(Create logical h3 headings for each major concept. Do not repeat concepts. For each concept, provide detailed explanations, definitions inside blockquotes, and code blocks or examples where applicable. "
-                    "Group all details about a single topic together, even if they were mentioned in different parts of the transcript.)\n\n"
-                    "## Practical Applications & Examples\n"
-                    "(Describe any real-world use cases, scenarios, code snippets, or practice exercises that solidify these concepts)\n\n"
-                    "## Core Summary\n"
-                    "(A brief concluding summary of the core thesis/lessons)"
-                )
-                
-                raw_summary = await llm_service.generate_text(
-                    prompt=user_prompt,
-                    system_prompt=system_prompt,
-                    provider="gemini"  # Use gemini as primary (key configured)
-                )
-                
-                # If the LLM returned the generic mock (no real API), build a real structured note from transcript
-                if raw_summary and ("Overview of" in raw_summary[:60] or "Core Concept" in raw_summary):
-                    # Build structured notes directly from transcript content
-                    words = doc_content.split()[:400]
-                    excerpt = " ".join(words)
-                    topic_name = doc.name
-                    raw_summary = f"""# 📚 {topic_name}
+        # 3. Generate structured study guide with LLM or set directly for notes
+        if doc_type == "note":
+            logger.info(f"Using manual note content directly for document {document_id}")
+            doc_summary = doc_content
+        else:
+            logger.info(f"Generating structured study notes using LLM for document {document_id}")
+            system_prompt = (
+                "You are Aora AI, a world-class academic study-note generator. "
+                "Your mission: transform raw video transcripts into COMPREHENSIVE, PREMIUM-QUALITY Markdown notes "
+                "that a student would pay for and use as their primary study reference.\n\n"
+                "ABSOLUTE REQUIREMENTS:\n"
+                "- MINIMUM LENGTH: 2000 words per note. Aim for 3000-5000+ words for longer videos.\n"
+                "- COMPLETE COVERAGE: Every single concept, term, command, example, workflow, and comparison "
+                "from the transcript must appear in the notes. Nothing may be omitted.\n"
+                "- TEXTBOOK DEPTH: Each concept must be explained in 2-5 full sentences, not just named.\n"
+                "- ZERO TRUNCATION: Never use '...', 'etc.', or 'see transcript'. Write everything out fully.\n"
+                "- REPRODUCE CODE: Every code snippet, command, formula, or config shown must appear verbatim "
+                "in a fenced code block with the correct language tag.\n\n"
+                "CONTENT RULES:\n"
+                "- DEDUPLICATE: consolidate every repeated concept into one authoritative section.\n"
+                "- CONCEPTUAL ORDER: organize by topic/concept, NOT by video timestamp.\n"
+                "- ELIMINATE FILLER: skip ads, like & subscribe, greetings, and off-topic chatter entirely.\n"
+                "- KEEP ANECDOTES: preserve memorable stories, metaphors, or jokes the instructor used.\n\n"
+                "FORMATTING RULES:\n"
+                "1. Title: single `# emoji Topic Name` h1 heading.\n"
+                "2. Each major section: `## emoji Section Title` h2. Use rich emojis like: "
+                "📖 🌐 🗂️ 🛠️ 🏗️ ⚙️ 📂 📋 🧩 🔀 ⚔️ 📦 🌿 🏷️ 🔄 🤝 🌳 🖥️ 🔧 📈 📄 👤 🚀 🔐.\n"
+                "3. Sub-topics: `### emoji Sub-title` h3 with a 2-4 sentence explanation paragraph below each.\n"
+                "4. Definitions/callouts: markdown blockquotes `> **Term**: explanation`.\n"
+                "5. Comparisons: full Markdown tables with headers and separator rows.\n"
+                "6. Commands/code: fenced code blocks with language tag (bash, python, git, etc.).\n"
+                "7. Lists: `-` bullets for unordered, `1.` for ordered steps.\n"
+                "8. End every major section with a summary table of commands/key points where applicable.\n"
+                "9. Generate a final `## 📋 Quick Reference Cheat Sheet` section with a comprehensive table of ALL commands or formulas.\n"
+                "10. NEVER truncate. Write the full comprehensive note regardless of length. "
+                "If you feel you are running out of space, continue writing — do not summarize."
+            )
+            
+            raw_summary = await llm_service.generate_long_notes(
+                transcript=doc_content,
+                doc_name=doc_name,
+                system_prompt=system_prompt,
+                provider="gemini",
+            )
+            
+            # If the LLM returned the generic mock (no real API), build a real structured note from transcript
+            if raw_summary and len(raw_summary) < 300 and ("Core Concept" in raw_summary or raw_summary.strip().startswith("### Overview")):
+                # Build structured notes directly from transcript content
+                words = doc_content.split()[:400]
+                excerpt = " ".join(words)
+                topic_name = doc_name
+                raw_summary = f"""# 📚 {topic_name}
 
 ## Brief Overview
-This note was generated from the YouTube video **[{topic_name}]({doc.file_url or '#'})**.
+This note was generated from the YouTube video **[{topic_name}]({doc_file_url or '#'})**.
 It covers key concepts, structured explanations, and practical takeaways from the tutorial.
 
 ## Key Points
@@ -497,25 +456,34 @@ The following is extracted directly from the video transcript:
 
 ## Summary
 This note provides a structured overview of **{topic_name}**. To deepen your understanding, practice the concepts discussed, revisit the video at key timestamps, and use the AI Chat feature to ask follow-up questions."""
-                
-                doc_summary = raw_summary
+            
+            doc_summary = raw_summary
 
-            # Append formatted YouTube transcript if available
-            if doc.doc_type == "youtube" and formatted_transcript:
-                doc_summary += f"\n\n## 📝 Full Video Transcript\n\n{formatted_transcript}\n"
-
-            # 4. Save updates
-            if doc.doc_type != "note":
-                doc.summary = markdown_to_html(doc_summary)
+        # 4. Save updates in a short-lived transaction
+        async with SessionLocal() as db:
+            result = await db.execute(select(Document).where(Document.id == document_id))
+            doc = result.scalar_one_or_none()
+            if doc:
+                if doc_type != "note":
+                    doc.summary = markdown_to_html(doc_summary)
+                else:
+                    doc.summary = doc_summary
+                doc.status = "completed"
+                await db.commit()
+                logger.info(f"Completed processing for document {document_id}")
             else:
-                doc.summary = doc_summary
-            doc.status = "completed"
-            await db.commit()
-            logger.info(f"Completed processing for document {document_id}")
-        except Exception as e:
-            logger.error(f"Failed processing document {document_id}: {e}")
-            doc.status = "failed"
-            await db.commit()
+                logger.error(f"Document {document_id} not found when saving completed status.")
+    except Exception as e:
+        logger.error(f"Failed processing document {document_id}: {e}")
+        async with SessionLocal() as db:
+            try:
+                result = await db.execute(select(Document).where(Document.id == document_id))
+                doc = result.scalar_one_or_none()
+                if doc:
+                    doc.status = "failed"
+                    await db.commit()
+            except Exception as db_err:
+                logger.error(f"Failed to set document status to failed: {db_err}")
 
 
 async def _async_generate_podcast(podcast_id: int, user_id: str, topic: str):

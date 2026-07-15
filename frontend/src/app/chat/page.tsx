@@ -1,20 +1,21 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useAppStore } from '@/store/useAppStore';
 import { useToast } from '@/components/ui/toast';
 import {
-  Sparkles,
   Plus,
   Send,
   Trash2,
-  Paperclip,
-  CheckCircle,
-  FileText,
   User,
   ExternalLink,
   MessageSquare,
-  Bot
+  Bot,
+  MoreVertical,
+  Pencil,
+  ArrowLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -22,51 +23,98 @@ import { Input } from '@/components/ui/input';
 
 export default function AIWorkspaceChat() {
   const { toast } = useToast();
-  const { chats, activeChatId, activePersona, addChat, deleteChat, sendMessage, setActiveChatId, setActivePersona } = useAppStore();
+  const { chats, activeChatId, activePersona, addChat, deleteChat, renameChat, sendMessage, setActiveChatId } = useAppStore();
 
   const activeChat = chats.find((c) => c.id === activeChatId) || chats[0] || null;
   const [chatInput, setChatInput] = useState('');
-  const [attachedFile, setAttachedFile] = useState<{ name: string; size: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  const handleSend = (e: React.FormEvent) => {
+  // Mobile view toggle state ('list' showing conversations or 'chat' showing messages)
+  const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
+
+  // Auto-scroll to bottom on new messages or loading state change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [activeChat?.messages, isLoading]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chatInput.trim() && !attachedFile) return;
+    if (!chatInput.trim() || isLoading) return;
 
-    if (activeChat) {
-      sendMessage(activeChat.id, chatInput);
-      setChatInput('');
-      setAttachedFile(null);
-      toast('Message dispatched to Aora AI');
-    } else {
-      const newId = addChat(chatInput.slice(0, 24) || 'New Study Conversation');
-      sendMessage(newId, chatInput);
-      setChatInput('');
-      setAttachedFile(null);
-      toast('Conversation initialized');
+    const messageText = chatInput;
+    setChatInput('');
+    setIsLoading(true);
+
+    try {
+      if (activeChat) {
+        await sendMessage(activeChat.id, messageText);
+        toast('Message dispatched to Aora AI');
+      } else {
+        const newId = addChat(messageText.slice(0, 24) || 'New Study Conversation');
+        await sendMessage(newId, messageText);
+        toast('Conversation initialized');
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleNewChat = () => {
     addChat('New Study Conversation');
+    setMobileView('chat');
     toast('New AI Chat session initialized');
   };
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    setOpenMenuId(null);
     deleteChat(id);
     toast('Conversation deleted', 'info');
   };
 
+  const handleRenameStart = (id: string, currentTitle: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpenMenuId(null);
+    setRenamingId(id);
+    setRenameValue(currentTitle);
+  };
+
+  const handleRenameSubmit = (id: string) => {
+    if (renameValue.trim()) {
+      renameChat(id, renameValue.trim());
+      toast('Conversation renamed');
+    }
+    setRenamingId(null);
+    setRenameValue('');
+  };
+
   const handleAttachMock = () => {
-    setAttachedFile({ name: 'Cellular_Respiration_Draft.docx', size: '14.2 KB' });
     toast('Attached document to chat context');
   };
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] gap-6 overflow-hidden max-w-7xl mx-auto">
+    <div className="flex h-[calc(100vh-8rem)] gap-0 lg:gap-6 overflow-hidden max-w-7xl mx-auto px-4">
       
       {/* 1. Left Sidebar: Chat History */}
-      <div className="w-80 border-r border-brand-border/60 pr-6 flex flex-col justify-between shrink-0 h-full">
+      <div className={`w-full lg:w-80 border-r-0 lg:border-r border-brand-border/60 pr-0 lg:pr-6 flex flex-col justify-between shrink-0 h-full ${
+        mobileView === 'chat' ? 'hidden lg:flex' : 'flex'
+      }`}>
         <div className="space-y-4 flex-1 overflow-y-auto">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-bold font-display text-foreground">Conversations</h3>
@@ -74,51 +122,112 @@ export default function AIWorkspaceChat() {
               <Plus className="h-4 w-4" />
             </Button>
           </div>
-
-          <div className="space-y-2">
+ 
+          <div className="space-y-2" ref={menuRef}>
             {chats.map((c) => {
               const isActive = c.id === activeChat?.id;
+              const isMenuOpen = openMenuId === c.id;
+              const isRenaming = renamingId === c.id;
               return (
                 <div
                   key={c.id}
-                  onClick={() => setActiveChatId(c.id)}
-                  className={`group w-full flex items-center justify-between p-3 rounded-xl transition-all border cursor-pointer text-left ${
+                  onClick={() => {
+                    if (!isRenaming) {
+                      setActiveChatId(c.id);
+                      setMobileView('chat');
+                    }
+                  }}
+                  className={`group relative w-full flex items-center justify-between p-3 rounded-xl transition-all border cursor-pointer text-left ${
                     isActive
                       ? 'bg-brand-accent/55 border-brand-primary/30 text-brand-primary'
                       : 'bg-white hover:bg-brand-muted border-brand-border/60'
                   }`}
                 >
-                  <div className="space-y-1 truncate pr-2">
-                    <p className="text-sm font-semibold truncate leading-tight">{c.title}</p>
+                  <div className="space-y-1 truncate pr-2 flex-1">
+                    {isRenaming ? (
+                      <input
+                        autoFocus
+                        value={renameValue}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={() => handleRenameSubmit(c.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleRenameSubmit(c.id);
+                          if (e.key === 'Escape') { setRenamingId(null); setRenameValue(''); }
+                        }}
+                        className="w-full text-sm font-semibold bg-white border border-brand-primary/40 rounded-md px-2 py-0.5 outline-none focus:ring-1 focus:ring-brand-primary text-foreground"
+                      />
+                    ) : (
+                      <p className="text-sm font-semibold truncate leading-tight">{c.title}</p>
+                    )}
                     <p className="text-[10px] text-foreground/40 font-medium">
                       {c.messages.length} messages
                     </p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={(e) => handleDelete(c.id, e)}
-                    className="h-7 w-7 rounded-full text-foreground/30 hover:text-red-500 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+
+                  {/* 3-dot menu button */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setOpenMenuId(isMenuOpen ? null : c.id); }}
+                    className="h-7 w-7 rounded-full flex items-center justify-center text-foreground/30 hover:text-brand-primary hover:bg-brand-accent/50 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                    <MoreVertical className="h-3.5 w-3.5" />
+                  </button>
+
+                  {/* Dropdown menu */}
+                  {isMenuOpen && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="absolute right-0 top-9 z-50 w-36 bg-white border border-brand-border/60 rounded-xl shadow-lg overflow-hidden"
+                    >
+                      <button
+                        onClick={(e) => handleRenameStart(c.id, c.title, e)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground hover:bg-brand-muted transition-colors"
+                      >
+                        <Pencil className="h-3 w-3 text-brand-primary" />
+                        Rename
+                      </button>
+                      <button
+                        onClick={(e) => handleDelete(c.id, e)}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Delete
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
 
             {chats.length === 0 && (
-              <p className="text-xs text-foreground/40 text-center py-8">No chats active</p>
+              <div className="flex flex-col items-center justify-center py-12 text-center px-4 border border-dashed border-brand-border/80 rounded-2xl bg-brand-muted/10 my-4">
+                <p className="text-sm font-medium text-foreground/45 mb-3.5">No chats active</p>
+                <Button onClick={handleNewChat} className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-primary text-white font-semibold text-xs shadow-md transition-transform hover:scale-[1.02]">
+                  <Plus className="w-4 h-4" /> Start New Chat
+                </Button>
+              </div>
             )}
           </div>
         </div>
       </div>
 
       {/* 2. Main Chat Workspace */}
-      <div className="flex-1 flex flex-col bg-white border border-brand-border/60 rounded-3xl overflow-hidden shadow-xs relative">
+      <div className={`flex-1 flex flex-col bg-white border border-brand-border/60 rounded-3xl overflow-hidden shadow-xs relative ${
+        mobileView === 'list' ? 'hidden lg:flex' : 'flex'
+      }`}>
         
         {/* Chat window Header */}
         <div className="flex items-center justify-between border-b border-brand-border/40 p-4 bg-brand-muted/20">
           <div className="flex items-center gap-2 text-left">
+            {/* Mobile Back Button */}
+            <button
+              onClick={() => setMobileView('list')}
+              className="lg:hidden p-1 mr-1 text-foreground/60 hover:text-foreground cursor-pointer flex items-center justify-center"
+              title="Back to Conversations"
+              type="button"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
             <Bot className="w-5 h-5 text-brand-primary" />
             <div>
               <p className="text-sm font-bold text-foreground">Aora Assistant</p>
@@ -129,30 +238,7 @@ export default function AIWorkspaceChat() {
             </div>
           </div>
 
-          {/* Persona toggles */}
-          <div className="flex bg-brand-muted border border-brand-border/60 p-0.5 rounded-lg">
-            {[
-              { id: 'academic', label: 'Academic' },
-              { id: 'tutor', label: 'Tutor' },
-              { id: 'creative', label: 'Creative' }
-            ].map((p) => {
-              const active = activePersona === p.id;
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => {
-                    setActivePersona(p.id as any);
-                    toast(`AI Persona set to: ${p.label}`);
-                  }}
-                  className={`text-[10px] font-bold px-2.5 py-1.5 rounded-md transition-all cursor-pointer ${
-                    active ? 'bg-white text-brand-primary shadow-xs' : 'text-foreground/45 hover:text-foreground/80'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              );
-            })}
-          </div>
+
         </div>
 
         {/* Message Log */}
@@ -176,7 +262,15 @@ export default function AIWorkspaceChat() {
                         ? 'bg-brand-primary border-brand-primary text-white rounded-tr-none'
                         : 'bg-[#FAF9FD] border-brand-border text-foreground rounded-tl-none'
                     }`}>
-                      <p className="whitespace-pre-wrap font-medium">{m.text}</p>
+                      {isUser ? (
+                        <p className="whitespace-pre-wrap font-medium">{m.text}</p>
+                      ) : (
+                        <div className="ai-markdown-body">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {m.text}
+                          </ReactMarkdown>
+                        </div>
+                      )}
                     </div>
 
                     {/* Sources inline panel (if present in AI response) */}
@@ -216,54 +310,47 @@ export default function AIWorkspaceChat() {
               </p>
             </div>
           )}
+
+          {/* Typing indicator */}
+          {isLoading && (
+            <div className="flex items-start gap-3 justify-start">
+              <div className="h-9 w-9 rounded-xl bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-center shrink-0">
+                <Bot className="w-4 h-4 text-brand-primary" />
+              </div>
+              <div className="bg-[#FAF9FD] border border-brand-border rounded-2xl rounded-tl-none px-4 py-3">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-brand-primary/60 animate-typing-dot" style={{ animationDelay: '0ms' }} />
+                  <span className="w-2 h-2 rounded-full bg-brand-primary/60 animate-typing-dot" style={{ animationDelay: '160ms' }} />
+                  <span className="w-2 h-2 rounded-full bg-brand-primary/60 animate-typing-dot" style={{ animationDelay: '320ms' }} />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
         </div>
 
         {/* Input box */}
         <div className="border-t border-brand-border/40 p-4 bg-brand-muted/20">
           <form onSubmit={handleSend} className="space-y-3">
-            {/* Attachment preview banner */}
-            {attachedFile && (
-              <div className="flex items-center justify-between p-2.5 bg-brand-accent/40 border border-brand-primary/20 rounded-xl max-w-xs">
-                <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-brand-primary" />
-                  <div className="text-left leading-none">
-                    <p className="text-xs font-bold text-foreground">{attachedFile.name}</p>
-                    <p className="text-[9px] font-semibold text-foreground/40 mt-0.5">{attachedFile.size}</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAttachedFile(null)}
-                  className="w-4 h-4 rounded-full bg-red-50 text-red-500 text-[9px] font-bold flex items-center justify-center cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-
             <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={handleAttachMock}
-                className="h-11 w-11 border border-brand-border bg-white rounded-xl text-foreground/40 hover:text-brand-primary shrink-0"
-              >
-                <Paperclip className="w-4 h-4" />
-              </Button>
-
               <div className="flex-1 relative flex items-center">
                 <input
-                  required={!attachedFile}
-                  placeholder="Ask Aora AI to synthesize literature, explain steps..."
+                  required
+                  disabled={isLoading}
+                  placeholder={isLoading ? 'Aora is thinking...' : 'Ask Aora AI to synthesize literature, explain steps...'}
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  className="w-full h-11 border border-brand-border bg-white rounded-xl px-4 py-2 text-sm placeholder:text-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary text-foreground text-left"
+                  className="w-full h-11 border border-brand-border bg-white rounded-xl px-4 py-2 text-sm placeholder:text-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary text-foreground text-left disabled:opacity-60 disabled:cursor-not-allowed transition-opacity"
                 />
               </div>
 
-              <Button type="submit" className="h-11 w-11 p-0 rounded-xl shrink-0">
-                <Send className="w-4 h-4" />
+              <Button type="submit" disabled={isLoading} className="h-11 w-11 p-0 rounded-xl shrink-0 disabled:opacity-60">
+                {isLoading ? (
+                  <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
               </Button>
             </div>
           </form>

@@ -44,22 +44,22 @@ const faqs = [
 // Interactive mock card subjects
 const mockCards = [
   {
-    title: "Barophilic adaptations",
-    text: "At immense depths, pressure is crushing. Creatures like the blobfish survive by replacing compressible gas spaces (like swim bladders) with lipids and gelatinous tissue.",
-    emoji: "🐟",
+    title: "Interactive Quizzes",
+    text: "Instantly generate multiple-choice quizzes with detailed explanations from your notes to test your understanding and pin-point knowledge gaps.",
+    emoji: "📝",
+    gradient: "from-[#030712] to-[#111827]"
+  },
+  {
+    title: "AI Podcast Studio",
+    text: "Transform heavy textbook chapters and long lecture transcripts into engaging, conversational audio shows hosted by two AI personalities.",
+    emoji: "🎙️",
     gradient: "from-[#0F172A] to-[#1E1B4B]"
   },
   {
-    title: "Mitochondrial Respiration",
-    text: "The metabolic process that converts chemical energy from oxygen molecules into adenosine triphosphate (ATP), releasing carbon dioxide and water as waste products.",
-    emoji: "⚡",
+    title: "Interactive Mind Maps",
+    text: "Generate dynamic, visual nodes that connect ideas, keywords, and equations from your documents into a beautifully structured knowledge graph.",
+    emoji: "🧠",
     gradient: "from-[#0B132B] to-[#1C2541]"
-  },
-  {
-    title: "Leitner Spaced Repetition",
-    text: "A widely used memory schedule where cards are reviewed at increasing intervals based on recall success, optimizing memory consolidation efficiency.",
-    emoji: "📦",
-    gradient: "from-[#030712] to-[#111827]"
   }
 ];
 
@@ -118,7 +118,7 @@ export default function LandingPage() {
       <header className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 select-none">
         <div className="bg-white border border-[#1E1B29]/10 px-6 sm:px-8 py-2.5 rounded-full flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-1.5 text-[#1E1B29]">
-            <Pencil className="w-4 h-4 -rotate-45 text-[#7C3AED]" />
+            <Pencil className="w-4 h-4 text-[#7C3AED]" />
             <span className="font-extrabold text-lg font-display tracking-tight text-[#1E1B29] lowercase">aora ai</span>
           </div>
           <nav className="hidden md:flex items-center gap-8">
@@ -148,7 +148,7 @@ export default function LandingPage() {
           >
             <div className="bg-white border border-[#1E1B29]/10 px-6 sm:px-8 py-2.5 rounded-full flex items-center justify-between shadow-md">
               <div className="flex items-center gap-1.5 text-[#1E1B29]">
-                <Pencil className="w-4 h-4 -rotate-45 text-[#7C3AED]" />
+                <Pencil className="w-4 h-4 text-[#7C3AED]" />
                 <span className="font-extrabold text-lg font-display tracking-tight text-[#1E1B29] lowercase">aora ai</span>
               </div>
               <nav className="hidden md:flex items-center gap-8">
@@ -478,7 +478,6 @@ export default function LandingPage() {
             <a href="#" className="hover:text-brand-primary transition-colors">Privacy</a>
             <a href="#" className="hover:text-brand-primary transition-colors">Terms</a>
           </div>
-          <p className="text-xs text-[#1E1B29]/30 mt-2">© 2026 Aorapoly LLC. All rights reserved.</p>
         </div>
       </footer>
     </div>

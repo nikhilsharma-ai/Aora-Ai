@@ -27,7 +27,7 @@ export function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
   };
 
   const hasClerk = !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-  const isLandingOrAuthPage = pathname === '/' || pathname === '/signup' || pathname === '/signin' || pathname === '/checkout';
+  const isLandingOrAuthPage = pathname === '/' || pathname === '/signup' || pathname === '/signin' || pathname === '/checkout' || pathname === '/sso-callback';
 
   useEffect(() => {
     initializeStore();
@@ -72,14 +72,16 @@ export function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', position: 'relative', minWidth: 0 }}>
         {!isWorkspace && <Navbar />}
-        <main style={{
-          flex: 1,
-          overflowY: 'auto',
-          overflowX: 'hidden',
-          padding: isWorkspace ? '0' : '28px 32px',
-          outline: 'none',
-          backgroundColor: 'var(--background)'
-        }}>
+        <main
+          className={isWorkspace ? '' : 'p-4 md:p-8'}
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            outline: 'none',
+            backgroundColor: 'var(--background)'
+          }}
+        >
           {children}
         </main>
       </div>
@@ -148,7 +150,7 @@ export function AppLayoutWrapper({ children }: { children: React.ReactNode }) {
                 <div className="flex items-start gap-3">
                   <Check className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
                   <p className="text-xs text-gray-500 font-semibold leading-relaxed">
-                    <span className="text-gray-700 font-bold">Download PDFs</span> — Export summaries and notes locally (Pro only)
+                    <span className="text-gray-700 font-bold">Download PDFs</span> — Export summaries and notes locally
                   </p>
                 </div>
                 <div className="flex items-start gap-3">

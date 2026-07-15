@@ -63,6 +63,8 @@ backend/uploads/*
 .env*.local
 *.env
 *.env.local
+.env.vercel
+.env.vercel.local
 backend/.env
 frontend/.env.local
 frontend/.env*.local
@@ -75,3 +77,6 @@ frontend/.env*.local
 *.njsproj
 *.sln
 *.sw?
+
+# Scratch & Temporary Files
+backend/transcript_output.txt

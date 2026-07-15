@@ -399,10 +399,10 @@ export default function SettingsPanel() {
               Need assistance? Contact our support team
             </p>
             <a
-              href="mailto:ds.nikhilsharma@gmail.com"
+              href="mailto:aora.ai06@gmail.com"
               className="text-xs font-bold text-[#7C3AED] hover:text-[#6D28D9] transition flex items-center gap-1 group"
             >
-              <span>ds.nikhilsharma@gmail.com</span>
+              <span>aora.ai06@gmail.com</span>
               <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
             </a>
           </div>
