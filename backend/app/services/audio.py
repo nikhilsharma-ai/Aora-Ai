@@ -84,7 +84,8 @@ class AudioService:
         import datetime
         import subprocess
         
-        out_dir = "uploads"
+        import tempfile
+        out_dir = os.path.join(tempfile.gettempdir(), "aora_uploads")
         os.makedirs(out_dir, exist_ok=True)
         # Unique name using video id or timestamp to prevent collision
         video_id_match = re.search(r"(?:v=|\/v\/|embed\/|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})", url)

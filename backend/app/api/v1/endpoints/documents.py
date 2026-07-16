@@ -75,14 +75,17 @@ async def upload_document(
         except Exception:
             pass
 
+    import tempfile
+    import os
+    temp_dir = os.path.join(tempfile.gettempdir(), "aora_uploads")
+
     if file:
-        import os
         import shutil
-        os.makedirs("uploads", exist_ok=True)
+        os.makedirs(temp_dir, exist_ok=True)
         original_filename = file.filename or name or "document"
         safe_name = "".join(c for c in original_filename if c.isalnum() or c in (' ', '_', '-', '.')).rstrip()
         safe_name = safe_name.replace(' ', '_')
-        file_path = f"uploads/{user_id}_{safe_name}"
+        file_path = os.path.join(temp_dir, f"{user_id}_{safe_name}")
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         upload_url = file_path
@@ -90,12 +93,11 @@ async def upload_document(
             name = original_filename
 
     if raw_text:
-        import os
-        os.makedirs("uploads", exist_ok=True)
+        os.makedirs(temp_dir, exist_ok=True)
         # Sanitize filename
         safe_name = "".join(c for c in name if c.isalnum() or c in (' ', '_', '-')).rstrip()
         safe_name = safe_name.replace(' ', '_')
-        file_path = f"uploads/{safe_name}_{user_id}.txt"
+        file_path = os.path.join(temp_dir, f"{safe_name}_{user_id}.txt")
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(raw_text)
         upload_url = file_path

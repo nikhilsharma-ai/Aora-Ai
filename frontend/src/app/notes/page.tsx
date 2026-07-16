@@ -2300,6 +2300,18 @@ export default function NotesWorkspace() {
               const target = e.target as HTMLElement;
               // If click landed directly inside ProseMirror, it already handled cursor placement
               if (target.closest('.ProseMirror')) return;
+
+              // Find the ProseMirror content element to check if click is above it
+              const pmEl = target.ownerDocument.querySelector('.ProseMirror');
+              if (pmEl) {
+                const rect = pmEl.getBoundingClientRect();
+                if (e.clientY < rect.top) {
+                  // Clicked above the text content (in the top padding / header gap) - focus start
+                  editor.commands.focus('start');
+                  return;
+                }
+              }
+
               // Use ProseMirror's native posAtCoords to find the exact doc position
               // at the pixel coordinates where the user clicked
               const pos = editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
@@ -2311,11 +2323,11 @@ export default function NotesWorkspace() {
                 editor.commands.focus('end');
               }
             }}
+            className="pt-5 px-4 md:px-8 pb-0"
             style={{
               flex: 1,
               width: '100%',
               maxWidth: '812px',
-              padding: '80px 32px 0',
               display: 'flex',
               flexDirection: 'column',
               boxSizing: 'border-box',
@@ -2870,8 +2882,12 @@ export default function NotesWorkspace() {
               )}
               {isAiLoading && (
                 <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                  <div style={{ padding: '12px 16px', borderRadius: '14px', backgroundColor: '#F3F0FC', color: '#6B628B', fontSize: '13px' }}>
-                    Aora is thinking...
+                  <div style={{ padding: '12px 16px', borderRadius: '14px', backgroundColor: '#F3F0FC', color: '#6B628B' }}>
+                    <div className="flex items-center gap-1.5 py-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-brand-primary/60 animate-typing-dot" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-brand-primary/60 animate-typing-dot" style={{ animationDelay: '160ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-brand-primary/60 animate-typing-dot" style={{ animationDelay: '320ms' }} />
+                    </div>
                   </div>
                 </div>
               )}
@@ -2948,8 +2964,12 @@ export default function NotesWorkspace() {
             ))}
             {isAiLoading && (
               <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                <div style={{ padding: '12px 16px', borderRadius: '14px', backgroundColor: 'var(--card-bg)', border: '1px solid var(--brand-border)', color: '#9090A8', fontSize: '13px' }}>
-                  Aora AI is thinking...
+                <div style={{ padding: '12px 16px', borderRadius: '14px', backgroundColor: 'var(--card-bg)', border: '1px solid var(--brand-border)' }}>
+                  <div className="flex items-center gap-1.5 py-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-primary/60 animate-typing-dot" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-primary/60 animate-typing-dot" style={{ animationDelay: '160ms' }} />
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-primary/60 animate-typing-dot" style={{ animationDelay: '320ms' }} />
+                  </div>
                 </div>
               </div>
             )}
@@ -3300,14 +3320,9 @@ export default function NotesWorkspace() {
     };
 
     return (
-      <div style={{
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        flex: 1, padding: '40px 24px', minHeight: 'calc(100vh - 80px)',
-        background: 'linear-gradient(135deg, #FAF8FF 0%, #F5F1FD 50%, #ECE5FC 100%)',
-        fontFamily: "'Inter', sans-serif",
-        position: 'relative',
-        overflow: 'hidden'
-      }}>
+      <div 
+        className="flex flex-col items-center justify-center flex-1 p-0 sm:p-6 md:p-8 min-h-[calc(100vh-56px)] bg-gradient-to-br from-[#FAF8FF] via-[#F5F1FD] to-[#ECE5FC] font-sans relative overflow-hidden"
+      >
         <style>{`
           @keyframes spin {
             from { transform: rotate(0deg); }
@@ -3365,45 +3380,28 @@ export default function NotesWorkspace() {
         }} />
 
         {/* Glass Card */}
-        <div style={{
-          width: '100%', maxWidth: '760px',
-          backgroundColor: 'rgba(255, 255, 255, 0.45)',
-          backdropFilter: 'blur(30px)',
-          WebkitBackdropFilter: 'blur(30px)',
-          border: '1px solid rgba(255, 255, 255, 0.6)',
-          borderRadius: '24px', padding: '44px 48px',
-          boxShadow: '0 20px 50px rgba(124, 58, 237, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
-          display: 'flex', flexDirection: 'column', boxSizing: 'border-box',
-          position: 'relative', zIndex: 1
-        }}>
+        <div className="w-full max-w-[760px] bg-transparent sm:bg-white/45 sm:backdrop-blur-[30px] border-none sm:border sm:border-white/60 rounded-none sm:rounded-3xl p-5 sm:p-8 md:p-12 shadow-none sm:shadow-lg sm:shadow-purple-500/5 relative z-10 flex flex-col box-border">
           {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1E1B29', margin: 0, fontFamily: "'Outfit', sans-serif" }}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-5 sm:mb-8">
+            <h2 className="text-base sm:text-lg md:text-xl font-bold text-[#1E1B29] m-0 font-display">
               Creating Your Notes
             </h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#6B628B', fontSize: '12px', fontWeight: 600 }}>
-              <RotateCw style={{ width: '13px', height: '13px', animation: 'spin 2s linear infinite' }} />
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-[#6B628B]">
+              <RotateCw className="w-3.5 h-3.5 animate-spin" />
               <span>This should take a few minutes...</span>
             </div>
           </div>
 
           {/* Two-Column Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '48px', alignItems: 'center', marginBottom: '32px' }}>
+          <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1fr] gap-5 md:gap-12 items-center mb-5 sm:mb-8">
 
             {/* Left Column: Progress Circle/Percentage & Bar */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                <span style={{
-                  fontSize: '76px', fontWeight: 800,
-                  background: 'linear-gradient(135deg, #7C3AED 0%, #EC4899 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  fontFamily: "'Outfit', sans-serif", letterSpacing: '-0.03em',
-                  lineHeight: 1
-                }}>
+            <div className="flex flex-col gap-3.5 sm:gap-5">
+              <div className="flex items-baseline gap-2">
+                <span className="text-5xl sm:text-6xl md:text-7xl font-extrabold bg-gradient-to-br from-[#7C3AED] to-[#EC4899] bg-clip-text text-transparent font-display tracking-tight leading-none">
                   {processingProgress}%
                 </span>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: '#6B628B', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span className="text-[10px] sm:text-xs font-bold text-[#6B628B] uppercase tracking-wider">
                   Processed
                 </span>
               </div>
@@ -3450,25 +3448,19 @@ export default function NotesWorkspace() {
                 </div>
               </div>
 
-              <div style={{ fontSize: '13px', color: '#6B628B', fontWeight: 600, minHeight: '18px' }}>
+              <div className="text-xs sm:text-sm text-[#6B628B] font-semibold min-h-[18px]">
                 {processingStep}
               </div>
             </div>
 
             {/* Right Column: Processing Pipeline Steps */}
-            <div style={{
-              display: 'flex', flexDirection: 'column', gap: '16px',
-              backgroundColor: 'rgba(255, 255, 255, 0.3)',
-              border: '1px solid rgba(124, 58, 237, 0.08)',
-              borderRadius: '16px', padding: '24px',
-              boxSizing: 'border-box'
-            }}>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: '#7C3AED', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px', display: 'block' }}>
+            <div className="flex flex-col gap-3 bg-white/30 border border-[#7C3AED]/10 rounded-2xl p-4 sm:p-5 md:p-6 box-border">
+              <span className="text-[10px] sm:text-xs font-bold text-[#7C3AED] uppercase tracking-wider mb-1 block">
                 Processing Pipeline
               </span>
 
               {/* Step 1 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div className="flex items-center gap-3">
                 <div style={stepCircleStyle(processingProgress >= 15, processingProgress < 15)}>
                   {processingProgress >= 15 ? <Check size={10} strokeWidth={3} /> : <div style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: '#7C3AED' }} />}
                 </div>
@@ -3478,7 +3470,7 @@ export default function NotesWorkspace() {
               </div>
 
               {/* Step 2 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div className="flex items-center gap-3">
                 <div style={stepCircleStyle(processingProgress >= 40, processingProgress >= 15 && processingProgress < 40)}>
                   {processingProgress >= 40 ? <Check size={10} strokeWidth={3} /> : processingProgress >= 15 ? <RotateCw size={10} style={{ animation: 'spin 2s linear infinite' }} /> : null}
                 </div>
@@ -3488,7 +3480,7 @@ export default function NotesWorkspace() {
               </div>
 
               {/* Step 3 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div className="flex items-center gap-3">
                 <div style={stepCircleStyle(processingProgress >= 75, processingProgress >= 40 && processingProgress < 75)}>
                   {processingProgress >= 75 ? <Check size={10} strokeWidth={3} /> : processingProgress >= 40 ? <RotateCw size={10} style={{ animation: 'spin 2s linear infinite' }} /> : null}
                 </div>
@@ -3498,7 +3490,7 @@ export default function NotesWorkspace() {
               </div>
 
               {/* Step 4 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div className="flex items-center gap-3">
                 <div style={stepCircleStyle(processingProgress >= 100, processingProgress >= 75 && processingProgress < 100)}>
                   {processingProgress >= 100 ? <Check size={10} strokeWidth={3} /> : processingProgress >= 75 ? <RotateCw size={10} style={{ animation: 'spin 2s linear infinite' }} /> : null}
                 </div>
@@ -3510,10 +3502,10 @@ export default function NotesWorkspace() {
           </div>
 
           {/* Spacer / Tip Line */}
-          <div style={{ height: '1px', backgroundColor: 'rgba(124, 58, 237, 0.08)', marginBottom: '20px' }} />
+          <div className="h-px bg-[#7C3AED]/10 mb-4 sm:mb-5" />
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', color: '#7C3AED', fontSize: '12px', fontWeight: 600 }}>
-            <Sparkles style={{ width: '13px', height: '13px' }} />
+          <div className="flex items-center justify-center gap-2 text-[#7C3AED] text-xs font-semibold text-center px-4">
+            <Sparkles className="w-3.5 h-3.5 shrink-0" />
             <span>You can ask Aora to explain complex topics right in your notes</span>
           </div>
         </div>
@@ -3602,11 +3594,15 @@ export default function NotesWorkspace() {
 
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <div
-        className="pl-14 lg:pl-6 pr-4 lg:pr-6"
+        className="pl-[60px] lg:pl-6 pr-4 lg:pr-6"
         style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          paddingTop: '12px', paddingBottom: '12px', borderBottom: '1px solid var(--brand-border)',
-          backgroundColor: 'var(--sidebar-bg)', flexShrink: 0
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          height: '56px',
+          borderBottom: '1px solid var(--brand-border)',
+          backgroundColor: 'var(--sidebar-bg)',
+          flexShrink: 0
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>

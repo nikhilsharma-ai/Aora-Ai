@@ -964,27 +964,36 @@ function CreateCard({ card, onClick }: { card: typeof CARDS[0]; onClick: () => v
       onClick={onClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="w-full flex items-center gap-3"
+      className="w-full flex flex-col sm:flex-row items-start sm:items-center gap-2.5 sm:gap-3 group transition-all duration-200 ease-in-out cursor-pointer p-3 sm:p-4 rounded-xl text-left font-sans"
       style={{
-        padding: '14px 16px',
         backgroundColor: hovered ? 'var(--brand-accent)' : 'var(--card-bg)',
         border: `1px solid ${hovered ? 'var(--brand-primary)' : 'var(--brand-border)'}`,
-        borderRadius: '12px',
-        cursor: 'pointer', textAlign: 'left',
-        fontFamily: "'Inter', sans-serif",
-        transition: 'all 0.18s ease',
         transform: hovered ? 'translateY(-2px)' : 'none',
-        boxShadow: hovered ? `0 6px 20px rgba(0,0,0,0.06)` : '0 1px 3px rgba(0,0,0,0.04)',
+        boxShadow: hovered ? '0 6px 20px rgba(0,0,0,0.06)' : '0 1px 3px rgba(0,0,0,0.04)',
       }}
     >
-      <div style={{ width: '38px', height: '38px', borderRadius: '9px', backgroundColor: card.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+      <div 
+        className="w-8 h-8 sm:w-[38px] sm:h-[38px] rounded-lg sm:rounded-[9px] flex items-center justify-center shrink-0" 
+        style={{ backgroundColor: card.iconBg }}
+      >
         {card.icon}
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ color: 'var(--foreground)', fontSize: '13px', fontWeight: 600, margin: '0 0 3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.title}</p>
-        <p style={{ color: '#9090A8', fontSize: '11px', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{card.subtitle}</p>
+      <div className="flex-1 min-w-0 w-full">
+        <p className="text-[12px] sm:text-[13px] font-semibold text-[var(--foreground)] m-0 mb-0.5 truncate leading-tight">
+          {card.title}
+        </p>
+        <p className="text-[10px] sm:text-[11px] text-[#9090A8] m-0 truncate leading-tight">
+          {card.subtitle}
+        </p>
       </div>
-      <ChevronRight style={{ width: '14px', height: '14px', color: hovered ? 'var(--brand-primary)' : '#C4C2D6', flexShrink: 0, transition: 'color 0.15s' }} />
+      <ChevronRight 
+        className="hidden sm:block shrink-0" 
+        style={{ 
+          width: '14px', height: '14px', 
+          color: hovered ? 'var(--brand-primary)' : '#C4C2D6', 
+          transition: 'color 0.15s' 
+        }} 
+      />
     </button>
   );
 }
@@ -1204,7 +1213,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── Creation Cards ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-7 w-full">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-7 w-full">
         {CARDS.map(card => (
           <CreateCard key={card.type} card={card} onClick={() => setActiveModal(card.type)} />
         ))}

@@ -1,55 +1,94 @@
-# Aura AI Monorepo
+# Aora AI 🚀
 
-Welcome to the **Aura AI** repository. This project is structured as a clean monorepo containing both the frontend application and the backend service.
+Aora AI is an interactive, AI-powered learning platform that turns your textbooks, lecture notes, audio recordings, or YouTube videos into interactive study guides and quizzes.
 
-## Project Structure
+---
 
+## 📸 Screenshots
+
+### Landing Page & Main Dashboard
+![Aora AI Landing Page](./docs/screenshots/landing_page.png)
+
+![Aora AI Dashboard](./docs/screenshots/dashboard.png)
+
+---
+
+## 📖 How to Use Aora AI
+
+### 1. Upload Study Materials
+Click any creation button on the dashboard to import your content.
+
+<details>
+<summary><b>📷 Click to expand creation screenshots</b></summary>
+<br/>
+
+<table>
+  <tr>
+    <td align="center"><b>New Blank Document</b></td>
+    <td align="center"><b>Upload Document</b></td>
+  </tr>
+  <tr>
+    <td><img src="./docs/screenshots/blank_document.png" alt="New Blank Document" width="350" /></td>
+    <td><img src="./docs/screenshots/upload_document.png" alt="Upload Document" width="350" /></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Record or Upload Audio</b></td>
+    <td align="center"><b>Import Link (YouTube/Web)</b></td>
+  </tr>
+  <tr>
+    <td><img src="./docs/screenshots/upload_audio.png" alt="Record or Upload Audio" width="350" /></td>
+    <td><img src="./docs/screenshots/import_link.png" alt="Import Link" width="350" /></td>
+  </tr>
+</table>
+
+</details>
+
+* **Blank Document**: Write or paste raw notes.
+* **Document Upload**: Process PDFs, Word docs, or slides.
+* **Record/Upload Audio**: Transcribe lecture recordings.
+* **Website Link**: Extract transcripts from YouTube videos or web pages.
+
+### 2. Learn & Test Yourself
+Open your note to interact with it:
+* **AI Chat**: Chat directly with your document to clear up doubts.
+  
+  ![Aora AI Chatbot Workspace](./docs/screenshots/chatbot.png)
+
+* **Practice Quizzes**: Automatically generate multiple-choice quizzes with detailed explanations to test and verify your understanding of the material.
+
+---
+
+## 🔄 Application Flow
+
+```mermaid
+graph LR
+    User(["User Ingests File/Link"]) --> Front["Next.js Frontend"]
+    Front --> Back["FastAPI Backend"]
+    Back --> Queue["Redis / Celery Queue"]
+    Queue --> Process["Text/Audio Extraction"]
+    Process --> DB[("PostgreSQL & Qdrant Vector DB")]
+    DB --> LLM["LLM Models: Gemini / Groq / OpenAI"]
+    LLM --> interactive["Quizzes / Chat"]
+    interactive --> Front
 ```
-saas.ai/
-├── backend/            # FastAPI Python backend
-│   ├── app/            # Application logic (routers, models, services)
-│   ├── requirements.txt# Python package dependencies
-│   └── venv/           # Python virtual environment
-├── frontend/           # Next.js frontend
-│   ├── src/            # Next.js React codebase (app router, components)
-│   ├── public/         # Static assets (images, icons)
-│   ├── package.json    # Frontend npm dependencies and scripts
-│   └── tsconfig.json   # TypeScript configuration
-└── package.json        # Root monorepo scripts coordinator
-```
 
-## Running the Application
+* **Ingestion**: Uploaded study materials are queued asynchronously via **Celery & Redis** to keep the UI fast.
+* **Processing**: Text is extracted, converted to embeddings, and indexed in the **Qdrant Vector Database** for semantic search (RAG).
+* **Generation**: LLMs generate quizzes and interactive chatbot responses directly from the stored context.
 
-### 1. Root Commands (Recommended)
+---
 
-From the root directory of this repository, you can run the following convenient commands:
+## 🛠️ Quick Start
 
-- **Run Frontend (Dev Server)**:
-  ```bash
-  npm run dev:frontend
-  ```
-- **Build Frontend**:
-  ```bash
-  npm run build:frontend
-  ```
-- **Run Backend (Uvicorn Dev Server)**:
-  ```bash
-  npm run dev:backend
-  ```
+### 1. Prerequisites
+* **Node.js** (v18+) & **Python** (v3.10+)
+* Docker (for Redis and Qdrant database containers)
 
-### 2. Manual Commands
-
-Alternatively, you can navigate into each folder and run their respective commands:
-
-#### Frontend (`frontend/`)
+### 2. Run Locally
+From the project root:
 ```bash
-cd frontend
+# Run both Next.js frontend and FastAPI backend dev servers
 npm run dev
 ```
-
-#### Backend (`backend/`)
-```bash
-cd backend
-venv\Scripts\activate
-uvicorn app.main:app --reload
-```
+* **Frontend**: `http://localhost:3000`
+* **Backend**: `http://localhost:8000`

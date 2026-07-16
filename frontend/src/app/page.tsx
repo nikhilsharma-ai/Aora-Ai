@@ -466,7 +466,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col items-center gap-6">
           <div className="flex items-center gap-2">
             <div className="p-1.5 bg-brand-primary rounded-lg text-white">
-              <Sparkles className="w-4 h-4" />
+              <Pencil className="w-4 h-4" />
             </div>
             <span className="font-extrabold text-[#1E1B29] font-display">Aora AI</span>
           </div>

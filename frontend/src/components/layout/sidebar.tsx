@@ -121,20 +121,30 @@ export function Sidebar() {
   return (
     <>
       {/* Mobile trigger */}
-      <div className="md:hidden fixed top-4 left-4 z-40">
+      <div 
+        className="md:hidden fixed z-40"
+        style={{
+          top: isWorkspace ? '10px' : '14px',
+          left: '16px'
+        }}
+      >
         <button
           onClick={() => setIsMobileOpen(true)}
           style={{
-            width: '40px', height: '40px',
+            width: '36px',
+            height: '36px',
             backgroundColor: 'var(--card-bg)',
             border: '1px solid var(--brand-border)',
-            borderRadius: '10px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
             color: 'var(--foreground)',
           }}
         >
-          <Menu style={{ width: '18px', height: '18px' }} />
+          <Menu style={{ width: '16px', height: '16px' }} />
         </button>
       </div>
 

@@ -53,7 +53,7 @@ export function Navbar() {
       {/* Mobile search overlay */}
       {isMobileSearchOpen && pathname === '/dashboard' && (
         <div 
-          className="absolute inset-0 z-50 flex items-center px-4 gap-3 sm:hidden"
+          className="fixed inset-x-0 top-0 h-16 z-50 flex items-center px-4 gap-3 sm:hidden"
           style={{ backgroundColor: 'var(--sidebar-bg)' }}
         >
           <button
