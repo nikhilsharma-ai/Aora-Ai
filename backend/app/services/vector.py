@@ -47,6 +47,9 @@ class VectorService:
             logger.info("Qdrant not running. Skipping database vector upsert.")
             return
 
+        # Ensure collection exists before upserting
+        await self.init_collections()
+
         try:
             import uuid
             # Qdrant requires point IDs to be unsigned integers or UUIDs (not arbitrary strings)

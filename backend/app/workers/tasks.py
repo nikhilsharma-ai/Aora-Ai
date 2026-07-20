@@ -75,9 +75,14 @@ def markdown_to_html(md: str) -> str:
     html = re.sub(r"^### (.*)$", r"<h3>\1</h3>", html, flags=re.MULTILINE)
     html = re.sub(r"^## (.*)$", r"<h2>\1</h2>", html, flags=re.MULTILINE)
     html = re.sub(r"^# (.*)$", r"<h1>\1</h1>", html, flags=re.MULTILINE)
+
+    # 3b. FIX: Convert standalone --- / *** / ___ lines to <hr> tags
+    # Must run AFTER header parsing (--- could be a setext header underline, but we don't support those)
+    html = re.sub(r"^[ \t]*[-*_]{3,}[ \t]*$", "<hr>", html, flags=re.MULTILINE)
     
-    # 4. Parse bold, links
+    # 4. Parse bold, italic, links
     html = re.sub(r"\*\*(.*?)\*\*", r"<strong>\1</strong>", html)
+    html = re.sub(r"\*(.*?)\*", r"<em>\1</em>", html)
     html = re.sub(r"\[(.*?)\]\((.*?)\)", r'<a href="\2" target="_blank" rel="noopener noreferrer">\1</a>', html)
     
     # 5. Parse bullet lists
@@ -93,45 +98,72 @@ def markdown_to_html(md: str) -> str:
     html = re.sub(r"(?:^[\-\*]\s+.*(?:\n|$))+", replace_list, html, flags=re.MULTILINE)
     
     # 6. Parse tables
+    # FIX: Regex no longer requires trailing `|` — many LLM responses omit it on data rows,
+    # which caused the regex to match only the header+separator and leave data rows as raw text.
+    # New pattern: any consecutive lines that START with `|` form a table block.
     def replace_table(match):
-        lines = [line.strip() for line in match.group(0).strip().split("\n") if line.strip()]
-        if not lines:
+        raw_lines = [line.strip() for line in match.group(0).strip().split("\n") if line.strip()]
+        if not raw_lines:
             return ""
+
+        def split_row(line: str):
+            """Split a markdown table row into cells, handling both '| a | b |' and '| a | b' formats."""
+            # Remove optional leading and trailing pipes before splitting
+            line = line.strip()
+            if line.startswith("|"):
+                line = line[1:]
+            if line.endswith("|"):
+                line = line[:-1]
+            return [c.strip() for c in line.split("|")]
+
         table_html = "<table>"
-        # Parse headers
-        headers = [h.strip() for h in lines[0].split("|")[1:-1]]
+
+        # Parse header row
+        headers = split_row(raw_lines[0])
         table_html += "<thead><tr>"
         for h in headers:
             table_html += f"<th>{h}</th>"
         table_html += "</tr></thead><tbody>"
-        
-        # Skip header separator if it exists
+
+        # Determine start index: skip separator row (e.g. |---|---|) if present
         start_idx = 1
-        if len(lines) > 1 and all(c in "-:| " for c in lines[1].replace("|", "")):
-            start_idx = 2
-            
-        for line in lines[start_idx:]:
-            cols = [c.strip() for c in line.split("|")[1:-1]]
-            if not cols:
+        if len(raw_lines) > 1:
+            sep_content = raw_lines[1].replace("|", "").replace("-", "").replace(":", "").replace(" ", "")
+            if sep_content == "":  # line is only |, -, :, space → it's a separator
+                start_idx = 2
+
+        for line in raw_lines[start_idx:]:
+            cols = split_row(line)
+            if not cols or all(c == "" for c in cols):
                 continue
             table_html += "<tr>"
             for c in cols:
                 table_html += f"<td>{c}</td>"
             table_html += "</tr>"
-        
+
         table_html += "</tbody></table>"
         return table_html
-        
-    html = re.sub(r"(?:^\|.*\|(?:\n|$))+", replace_table, html, flags=re.MULTILINE)
+
+    # Match any block of consecutive lines starting with `|` (trailing `|` is optional)
+    html = re.sub(r"(?:^\|[^\n]*(?:\n|$))+", replace_table, html, flags=re.MULTILINE)
     
     # 7. Wrap paragraphs
+    # FIX: Expanded exclusion list to cover ALL HTML tags (opening and closing) so they
+    # are never double-wrapped in <p> tags.
+    _block_tags = (
+        "<h", "<ul", "<ol", "<li", "<pre", "<code", "<blockquote", "<hr",
+        "<table", "<thead", "<tbody", "<tr", "<td", "<th",
+        "</h", "</ul", "</ol", "</li", "</pre", "</code", "</blockquote",
+        "</table>", "</thead>", "</tbody>", "</tr>", "</td>", "</th>",
+        "<p>", "</p>"
+    )
     lines = html.split("\n")
     for i, line in enumerate(lines):
         stripped = line.strip()
         # Do not wrap code block placeholders
         if stripped.startswith("<!--CODEBLOCK_") and stripped.endswith("-->"):
             continue
-        if stripped and not stripped.startswith(("<h", "<ul", "<ol", "<li", "<pre", "<code", "<blockquote", "<table", "<thead", "<tbody", "<tr", "<td", "<th", "</pre>", "</table>", "</ul>", "</ol>", "</blockquote>", "<p>", "</p>")):
+        if stripped and not stripped.startswith(_block_tags):
             lines[i] = f"<p>{line}</p>"
             
     html = "\n".join(lines)
@@ -141,6 +173,7 @@ def markdown_to_html(md: str) -> str:
         html = html.replace(f"<!--CODEBLOCK_{i}-->", block_html)
         
     return html
+
 
 
 # Helper async processes

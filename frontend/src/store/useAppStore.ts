@@ -518,9 +518,11 @@ export const useAppStore = create<AppState>((set, get) => {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000); // 60-second timeout
+      // Derive a stable numeric thread ID from the chatId string
+      const numericThreadId = parseInt(chatId.replace(/\D/g, '').slice(-6) || '1', 10) || 1;
       let response: Response;
       try {
-        response = await fetch(`${API_URL}/chat/threads/1/messages?text=${encodeURIComponent(text)}`, {
+        response = await fetch(`${API_URL}/chat/threads/${numericThreadId}/messages?text=${encodeURIComponent(text)}`, {
           method: 'POST',
           signal: controller.signal,
         });
@@ -529,12 +531,13 @@ export const useAppStore = create<AppState>((set, get) => {
       }
       const data = await response.json();
       
+      const rawSources = data.ai_response?.sources;
       const aiMsg: ChatMessage = {
         id: `m-a-${Date.now()}`,
         sender: 'ai',
-        text: data.ai_response.text,
+        text: data.ai_response?.text || 'Sorry, I could not generate a response.',
         timestamp: timeStr,
-        sources: data.ai_response.sources.map((s: any) => s.text)
+        sources: Array.isArray(rawSources) ? rawSources.map((s: any) => typeof s === 'string' ? s : s.text) : []
       };
 
       set((state) => ({

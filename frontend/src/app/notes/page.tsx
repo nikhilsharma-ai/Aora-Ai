@@ -960,39 +960,34 @@ export default function NotesWorkspace() {
       return;
     }
 
-    setProcessingProgress(0);
+    setProcessingProgress(5);
     setProcessingStep('Ingesting document data...');
 
     let pollIntervalId: any;
     let progressIntervalId: any;
 
-    let currentProgress = 0;
+    let currentProgress = 5; // start at 5% so bar is visually moving immediately
     let isCompleted = false;
     let documentData: any = null;
     let msSinceLastStep = 0;
+    // Track how long we've been in the 95%+ zone (ms) for the patience message
+    let msIn95Zone = 0;
 
     // Progress interval (runs every 100ms for stepped updates of 5%)
     progressIntervalId = setInterval(() => {
       if (isCompleted) {
-        // Fast-forward: step by 5% every 100ms
-        msSinceLastStep += 100;
-        if (msSinceLastStep >= 100) {
-          msSinceLastStep = 0;
-          currentProgress = Math.min(100, currentProgress + 5);
-          setProcessingProgress(currentProgress);
+        // Jump straight to 100% — no slow crawl
+        clearInterval(progressIntervalId);
+        currentProgress = 100;
+        setProcessingProgress(100);
+        setProcessingStep('Finished compiling study notes!');
 
-          if (currentProgress >= 100) {
-            clearInterval(progressIntervalId);
-            setProcessingStep('Finished compiling study notes!');
-
-            if (documentData) {
-              updateNote(activeNote.id, {
-                content: documentData.summary || `## ${activeNote.title}\n\nNotes compilation completed.`,
-                status: 'completed'
-              });
-              toast('Study guide generated successfully!', 'success');
-            }
-          }
+        if (documentData) {
+          updateNote(activeNote.id, {
+            content: documentData.summary || `## ${activeNote.title}\n\nNotes compilation completed.`,
+            status: 'completed'
+          });
+          toast('Study guide generated successfully!', 'success');
         }
       } else {
         // Normal simulation: check step duration based on current progress
@@ -1004,9 +999,11 @@ export default function NotesWorkspace() {
         } else if (currentProgress < 75) {
           stepDuration = 3000; // 3s per 5% (reaches 75% in 21s)
         } else if (currentProgress < 95) {
-          stepDuration = 6000; // 6s per 5% (reaches 95% in 24s)
+          stepDuration = 4000; // 4s per 5% (reaches 95% in 16s)
         } else {
-          stepDuration = 5000; // Tick slowly at 95%+ every 5 seconds
+          // FIX: was 5000ms — reduced to 2000ms so users see visible movement at 95%+
+          stepDuration = 2000; // 2s per 1% tick at 95%+
+          msIn95Zone += 100;   // accumulate time spent in the 95%+ zone
         }
 
         msSinceLastStep += 100;
@@ -1015,8 +1012,9 @@ export default function NotesWorkspace() {
           if (currentProgress < 95) {
             currentProgress = Math.min(95, currentProgress + 5);
           } else {
-            // Crawl slowly from 95 to 98 so the user sees activity
-            currentProgress = Math.min(98, currentProgress + 1);
+            // FIX: was Math.min(98, ...) — hard cap removed, now crawls to 99%
+            // This prevents the UI from appearing frozen while the LLM is still working
+            currentProgress = Math.min(99, currentProgress + 1);
           }
           setProcessingProgress(currentProgress);
 
@@ -1030,18 +1028,31 @@ export default function NotesWorkspace() {
           } else if (currentProgress < 95) {
             setProcessingStep('Formatting premium notes page...');
           } else {
-            // Alternate engaging messages when at 95%+
-            const messages = [
-              'Analyzing video segments for key concepts...',
-              'Drafting textbook-depth explanations...',
-              'Generating custom tables and code blocks...',
-              'Consolidating topics and removing duplication...',
-              'Compiling final reference cheat sheets...',
-              'Finishing touches on study guide layout...',
-              'Almost ready! Finalizing generated text...'
-            ];
-            const msgIdx = Math.floor(Math.random() * messages.length);
-            setProcessingStep(messages[msgIdx]);
+            // After 3 minutes (180,000ms) in the 95%+ zone, show patience messages
+            if (msIn95Zone >= 180000) {
+              const longMessages = [
+                'Large content takes longer — hang tight!',
+                'Still generating comprehensive notes...',
+                'Gemini is crafting detailed explanations...',
+                'Almost there — complex content takes time!',
+                'Processing a large transcript — nearly done...',
+              ];
+              const msgIdx = Math.floor(msIn95Zone / 10000) % longMessages.length;
+              setProcessingStep(longMessages[msgIdx]);
+            } else {
+              // Regular rotating messages while waiting for LLM
+              const messages = [
+                'Analyzing video segments for key concepts...',
+                'Drafting textbook-depth explanations...',
+                'Generating custom tables and code blocks...',
+                'Consolidating topics and removing duplication...',
+                'Compiling final reference cheat sheets...',
+                'Finishing touches on study guide layout...',
+                'Almost ready! Finalizing generated text...'
+              ];
+              const msgIdx = Math.floor(Math.random() * messages.length);
+              setProcessingStep(messages[msgIdx]);
+            }
           }
         }
       }
@@ -1064,7 +1075,7 @@ export default function NotesWorkspace() {
           toast('Notes generation failed. Please try again.', 'error');
         }
       } catch (err) {
-        console.error("Polling error:", err);
+        console.warn("Polling error:", err);
       }
     };
 
