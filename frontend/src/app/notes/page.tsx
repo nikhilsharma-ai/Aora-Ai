@@ -960,23 +960,32 @@ export default function NotesWorkspace() {
       return;
     }
 
-    setProcessingProgress(5);
-    setProcessingStep('Ingesting document data...');
+    setProcessingProgress(12);
+    setProcessingStep('Ingesting document & transcript data...');
 
     let pollIntervalId: any;
     let progressIntervalId: any;
 
-    let currentProgress = 5; // start at 5% so bar is visually moving immediately
+    let currentProgress = 12; // Start at 12% immediately so progress bar is visible right away
     let isCompleted = false;
     let documentData: any = null;
     let msSinceLastStep = 0;
-    // Track how long we've been in the 95%+ zone (ms) for the patience message
     let msIn95Zone = 0;
 
-    // Progress interval (runs every 100ms for stepped updates of 5%)
+    const messages = [
+      'Ingesting document & transcript data...',
+      'Analyzing video segments & identifying key concepts...',
+      'Drafting textbook-depth explanations & blockquotes...',
+      'Generating custom markdown tables & code snippets...',
+      'Consolidating topics & removing duplication...',
+      'Compiling final reference cheat sheets...',
+      'Finalizing study guide formatting...'
+    ];
+
+    // Progress interval (runs every 100ms for smooth 1% increment progression)
     progressIntervalId = setInterval(() => {
       if (isCompleted) {
-        // Jump straight to 100% — no slow crawl
+        // Jump straight to 100% when backend completes
         clearInterval(progressIntervalId);
         currentProgress = 100;
         setProcessingProgress(100);
@@ -990,69 +999,43 @@ export default function NotesWorkspace() {
           toast('Study guide generated successfully!', 'success');
         }
       } else {
-        // Normal simulation: check step duration based on current progress
-        let stepDuration = 3000; // default 3s per 5%
-        if (currentProgress < 15) {
-          stepDuration = 600; // 0.6s per 5% (reaches 15% in 1.8s)
-        } else if (currentProgress < 40) {
-          stepDuration = 1500; // 1.5s per 5% (reaches 40% in 7.5s)
+        // Smooth realistic pacing tuned to standard LLM study guide generation timeline (~55s total)
+        let stepDuration = 350; // default ms per 1% increment
+        if (currentProgress < 20) {
+          stepDuration = 350;   // 12% -> 20%: ~2.8s (Ingestion phase)
+        } else if (currentProgress < 50) {
+          stepDuration = 700;   // 20% -> 50%: ~21.0s (Transcript analysis)
         } else if (currentProgress < 75) {
-          stepDuration = 3000; // 3s per 5% (reaches 75% in 21s)
+          stepDuration = 800;   // 50% -> 75%: ~20.0s (Explanations & blockquotes)
+        } else if (currentProgress < 90) {
+          stepDuration = 1100;  // 75% -> 90%: ~16.5s (Tables & cheat sheet)
         } else if (currentProgress < 95) {
-          stepDuration = 4000; // 4s per 5% (reaches 95% in 16s)
+          stepDuration = 2000;  // 90% -> 95%: ~10.0s (Consolidating topics)
         } else {
-          // FIX: was 5000ms — reduced to 2000ms so users see visible movement at 95%+
-          stepDuration = 2000; // 2s per 1% tick at 95%+
-          msIn95Zone += 100;   // accumulate time spent in the 95%+ zone
+          stepDuration = 4000;  // 95%+ extended buffer tick (+1% every 4s)
+          msIn95Zone += 100;
         }
 
         msSinceLastStep += 100;
         if (msSinceLastStep >= stepDuration) {
           msSinceLastStep = 0;
-          if (currentProgress < 95) {
-            currentProgress = Math.min(95, currentProgress + 5);
-          } else {
-            // FIX: was Math.min(98, ...) — hard cap removed, now crawls to 99%
-            // This prevents the UI from appearing frozen while the LLM is still working
-            currentProgress = Math.min(99, currentProgress + 1);
-          }
+          currentProgress = Math.min(99, currentProgress + 1);
           setProcessingProgress(currentProgress);
 
-          // Update step text based on progress
-          if (currentProgress < 15) {
-            setProcessingStep('Ingesting document data...');
-          } else if (currentProgress < 40) {
-            setProcessingStep('Extracting audio/text transcripts...');
+          // Update step text dynamically based on current progress stage
+          if (currentProgress < 20) {
+            setProcessingStep(messages[0]);
+          } else if (currentProgress < 50) {
+            setProcessingStep(messages[1]);
           } else if (currentProgress < 75) {
-            setProcessingStep('Structuring outline sections and key takeaways...');
+            setProcessingStep(messages[2]);
+          } else if (currentProgress < 90) {
+            setProcessingStep(messages[3]);
           } else if (currentProgress < 95) {
-            setProcessingStep('Formatting premium notes page...');
+            setProcessingStep(messages[4]);
           } else {
-            // After 3 minutes (180,000ms) in the 95%+ zone, show patience messages
-            if (msIn95Zone >= 180000) {
-              const longMessages = [
-                'Large content takes longer — hang tight!',
-                'Still generating comprehensive notes...',
-                'Gemini is crafting detailed explanations...',
-                'Almost there — complex content takes time!',
-                'Processing a large transcript — nearly done...',
-              ];
-              const msgIdx = Math.floor(msIn95Zone / 10000) % longMessages.length;
-              setProcessingStep(longMessages[msgIdx]);
-            } else {
-              // Regular rotating messages while waiting for LLM
-              const messages = [
-                'Analyzing video segments for key concepts...',
-                'Drafting textbook-depth explanations...',
-                'Generating custom tables and code blocks...',
-                'Consolidating topics and removing duplication...',
-                'Compiling final reference cheat sheets...',
-                'Finishing touches on study guide layout...',
-                'Almost ready! Finalizing generated text...'
-              ];
-              const msgIdx = Math.floor(Math.random() * messages.length);
-              setProcessingStep(messages[msgIdx]);
-            }
+            const rotationIdx = Math.floor(msIn95Zone / 4000) % 3;
+            setProcessingStep(messages[4 + rotationIdx]);
           }
         }
       }
@@ -1080,7 +1063,8 @@ export default function NotesWorkspace() {
     };
 
     pollDocumentStatus();
-    pollIntervalId = setInterval(pollDocumentStatus, 2500);
+    // Poll every 1.5s normally, faster check when nearing completion
+    pollIntervalId = setInterval(pollDocumentStatus, 1500);
 
     return () => {
       clearInterval(pollIntervalId);
@@ -3472,40 +3456,40 @@ export default function NotesWorkspace() {
 
               {/* Step 1 */}
               <div className="flex items-center gap-3">
-                <div style={stepCircleStyle(processingProgress >= 15, processingProgress < 15)}>
-                  {processingProgress >= 15 ? <Check size={10} strokeWidth={3} /> : <div style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: '#7C3AED' }} />}
+                <div style={stepCircleStyle(processingProgress >= 20, processingProgress < 20)}>
+                  {processingProgress >= 20 ? <Check size={10} strokeWidth={3} /> : <div style={{ width: '4px', height: '4px', borderRadius: '50%', backgroundColor: '#7C3AED' }} />}
                 </div>
-                <span style={stepTextStyle(processingProgress >= 15, processingProgress < 15)}>
+                <span style={stepTextStyle(processingProgress >= 20, processingProgress < 20)}>
                   Ingesting document content
                 </span>
               </div>
 
               {/* Step 2 */}
               <div className="flex items-center gap-3">
-                <div style={stepCircleStyle(processingProgress >= 40, processingProgress >= 15 && processingProgress < 40)}>
-                  {processingProgress >= 40 ? <Check size={10} strokeWidth={3} /> : processingProgress >= 15 ? <RotateCw size={10} style={{ animation: 'spin 2s linear infinite' }} /> : null}
+                <div style={stepCircleStyle(processingProgress >= 50, processingProgress >= 20 && processingProgress < 50)}>
+                  {processingProgress >= 50 ? <Check size={10} strokeWidth={3} /> : processingProgress >= 20 ? <RotateCw size={10} style={{ animation: 'spin 2s linear infinite' }} /> : null}
                 </div>
-                <span style={stepTextStyle(processingProgress >= 40, processingProgress >= 15 && processingProgress < 40)}>
+                <span style={stepTextStyle(processingProgress >= 50, processingProgress >= 20 && processingProgress < 50)}>
                   Transcribing transcripts
                 </span>
               </div>
 
               {/* Step 3 */}
               <div className="flex items-center gap-3">
-                <div style={stepCircleStyle(processingProgress >= 75, processingProgress >= 40 && processingProgress < 75)}>
-                  {processingProgress >= 75 ? <Check size={10} strokeWidth={3} /> : processingProgress >= 40 ? <RotateCw size={10} style={{ animation: 'spin 2s linear infinite' }} /> : null}
+                <div style={stepCircleStyle(processingProgress >= 80, processingProgress >= 50 && processingProgress < 80)}>
+                  {processingProgress >= 80 ? <Check size={10} strokeWidth={3} /> : processingProgress >= 50 ? <RotateCw size={10} style={{ animation: 'spin 2s linear infinite' }} /> : null}
                 </div>
-                <span style={stepTextStyle(processingProgress >= 75, processingProgress >= 40 && processingProgress < 75)}>
+                <span style={stepTextStyle(processingProgress >= 80, processingProgress >= 50 && processingProgress < 80)}>
                   Structuring key takeaways
                 </span>
               </div>
 
               {/* Step 4 */}
               <div className="flex items-center gap-3">
-                <div style={stepCircleStyle(processingProgress >= 100, processingProgress >= 75 && processingProgress < 100)}>
-                  {processingProgress >= 100 ? <Check size={10} strokeWidth={3} /> : processingProgress >= 75 ? <RotateCw size={10} style={{ animation: 'spin 2s linear infinite' }} /> : null}
+                <div style={stepCircleStyle(processingProgress >= 100, processingProgress >= 80 && processingProgress < 100)}>
+                  {processingProgress >= 100 ? <Check size={10} strokeWidth={3} /> : processingProgress >= 80 ? <RotateCw size={10} style={{ animation: 'spin 2s linear infinite' }} /> : null}
                 </div>
-                <span style={stepTextStyle(processingProgress >= 100, processingProgress >= 75 && processingProgress < 100)}>
+                <span style={stepTextStyle(processingProgress >= 100, processingProgress >= 80 && processingProgress < 100)}>
                   Compiling study guide
                 </span>
               </div>

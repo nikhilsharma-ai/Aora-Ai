@@ -5,7 +5,7 @@ from app.core.config import settings
 
 CHUNK_CHAR_LIMIT = 60000        # characters per transcript chunk sent to LLM
 MAX_OUTPUT_TOKENS = 65536       # max tokens Gemini can output per call (gemini-2.5-flash supports up to 65536)
-LONG_VIDEO_THRESHOLD = 30000    # chars; above this we use chunked processing (~10-15 min video)
+LONG_VIDEO_THRESHOLD = 250000   # chars; above this we use chunked processing (Gemini Flash supports 1M token context)
 
 logger = logging.getLogger(__name__)
 
@@ -270,13 +270,12 @@ class LLMService:
                 break
 
         total_chunks = len(chunks)
-        logger.info(f"[LLM] Split transcript into {total_chunks} chunks for '{doc_name}'")
+        logger.info(f"[LLM] Split transcript into {total_chunks} chunks for '{doc_name}' — generating in parallel.")
 
-        chunk_notes = []
-        for idx, chunk in enumerate(chunks):
+        async def _process_single_chunk(idx: int, chunk: str) -> Optional[str]:
             part_label = f"Part {idx + 1} of {total_chunks}"
             chunk_words = len(chunk.split())
-            logger.info(f"[LLM] Generating notes for {part_label} ({chunk_words} words)...")
+            logger.info(f"[LLM] Parallel Task: Generating notes for {part_label} ({chunk_words} words)...")
             chunk_prompt = (
                 f"You are processing {part_label} of {total_chunks} of a long transcript for '{doc_name}'.\n"
                 f"This chunk contains approximately {chunk_words} words of content.\n\n"
@@ -298,13 +297,18 @@ class LLMService:
                 "End each major section with a mini summary table if applicable.\n\n"
                 f"TRANSCRIPT CHUNK:\n\"\"\"\n{chunk}\n\"\"\""
             )
-            part_notes = await self.generate_text(
-                prompt=chunk_prompt,
-                system_prompt=system_prompt,
-                provider=provider,
-            )
-            if part_notes and len(part_notes) > 100:
-                chunk_notes.append(part_notes)
+            try:
+                return await self.generate_text(
+                    prompt=chunk_prompt,
+                    system_prompt=system_prompt,
+                    provider=provider,
+                )
+            except Exception as e:
+                logger.error(f"[LLM] Error processing chunk {idx+1}: {e}")
+                return None
+
+        results = await asyncio.gather(*[_process_single_chunk(i, c) for i, c in enumerate(chunks)], return_exceptions=True)
+        chunk_notes = [res for res in results if isinstance(res, str) and len(res) > 100]
 
         if not chunk_notes:
             return self._mock_learning_response(doc_name)

@@ -37,6 +37,22 @@ class VectorService:
                     vectors_config=VectorParams(size=1536, distance=Distance.COSINE),
                 )
                 logger.info(f"Created Qdrant Collection: {settings.QDRANT_COLLECTION}")
+            
+            # Ensure payload field indexes exist for filtering
+            try:
+                from qdrant_client.http.models import PayloadSchemaType
+                client.create_payload_index(
+                    collection_name=settings.QDRANT_COLLECTION,
+                    field_name="user_id",
+                    field_schema=PayloadSchemaType.KEYWORD
+                )
+                client.create_payload_index(
+                    collection_name=settings.QDRANT_COLLECTION,
+                    field_name="document_id",
+                    field_schema=PayloadSchemaType.INTEGER
+                )
+            except Exception:
+                pass # Indexes may already exist
         except Exception as e:
             logger.error(f"Error initializing Qdrant Collections: {e}")
 

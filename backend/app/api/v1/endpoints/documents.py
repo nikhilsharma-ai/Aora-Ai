@@ -11,6 +11,10 @@ from app.workers.tasks import process_document_task
 
 router = APIRouter()
 
+# Track document IDs that currently have an active background processing task.
+# This prevents the polling endpoint from spawning duplicate tasks.
+_in_flight_document_ids: set[int] = set()
+
 @router.get("/", response_model=List[Dict[str, Any]])
 async def list_user_documents(
     current_user: Dict[str, Any] = Depends(deps.get_current_user),
@@ -116,14 +120,11 @@ async def upload_document(
     await db.commit()
     await db.refresh(new_doc)
 
-    # Trigger async parsing task on Celery workers
-    try:
-        process_document_task.delay(new_doc.id, user_id)
-    except Exception:
-        # Fallback: run directly as an asyncio task on the server's running event loop
-        # to avoid event loop conflicts when accessing the database connection pool.
-        from app.workers.tasks import _async_process_document
-        asyncio.create_task(_async_process_document(new_doc.id, user_id))
+    # Always dispatch document processing task directly as an asyncio background task
+    # to guarantee immediate processing without relying on an external Celery worker process.
+    from app.workers.tasks import _async_process_document
+    _in_flight_document_ids.add(new_doc.id)
+    asyncio.create_task(_async_process_document(new_doc.id, user_id))
 
     return {
         "status": "processing",
@@ -171,7 +172,7 @@ async def get_document_details(
     db: AsyncSession = Depends(deps.get_db)
 ):
     """
-    Fetches processed summaries and status flags.
+    Fetches processed summaries and status flags. Self-heals stuck "processing" documents.
     """
     result = await db.execute(
         select(Document).where(Document.id == document_id, Document.user_id == current_user["id"])
@@ -179,6 +180,12 @@ async def get_document_details(
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Document asset not found.")
+    
+    # Self-healing safeguard: if document status is "processing" and task is not already running
+    if doc.status == "processing" and doc.id not in _in_flight_document_ids:
+        _in_flight_document_ids.add(doc.id)
+        from app.workers.tasks import _async_process_document
+        asyncio.create_task(_async_process_document(doc.id, current_user["id"]))
     
     return {
         "id": doc.id,

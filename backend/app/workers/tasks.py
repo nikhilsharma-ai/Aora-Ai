@@ -178,12 +178,14 @@ def markdown_to_html(md: str) -> str:
 
 # Helper async processes
 async def _async_process_document(document_id: int, user_id: str):
+    from app.api.v1.endpoints.documents import _in_flight_document_ids
     from app.db.session import SessionLocal
     from app.db.models.document import Document
     from app.services.llm import llm_service
     from app.services.vector import vector_service
     import re
 
+    _in_flight_document_ids.add(document_id)
     def extract_youtube_video_id(url: str) -> str:
         patterns = [
             r"(?:v=|\/v\/|embed\/|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})",
@@ -285,20 +287,20 @@ async def _async_process_document(document_id: int, user_id: str):
             chunks.append(" ".join(current_chunk))
         return chunks
 
-    doc_type = ""
-    doc_name = ""
-    doc_file_url = ""
-    async with SessionLocal() as db:
-        result = await db.execute(select(Document).where(Document.id == document_id))
-        doc = result.scalar_one_or_none()
-        if not doc:
-            logger.error(f"Document {document_id} not found in database.")
-            return
-        doc_type = doc.doc_type
-        doc_name = doc.name
-        doc_file_url = doc.file_url
-
     try:
+        doc_type = ""
+        doc_name = ""
+        doc_file_url = ""
+        async with SessionLocal() as db:
+            result = await db.execute(select(Document).where(Document.id == document_id))
+            doc = result.scalar_one_or_none()
+            if not doc:
+                logger.error(f"Document {document_id} not found in database.")
+                return
+            doc_type = doc.doc_type
+            doc_name = doc.name
+            doc_file_url = doc.file_url
+
         doc_content = ""
         formatted_transcript = ""
         chunks = []
@@ -449,7 +451,8 @@ async def _async_process_document(document_id: int, user_id: str):
             )
             
             # If the LLM returned the generic mock (no real API), build a real structured note from transcript
-            if raw_summary and len(raw_summary) < 300 and ("Core Concept" in raw_summary or raw_summary.strip().startswith("### Overview")):
+            is_mock_response = not raw_summary or "Core Concept" in raw_summary or "Overview of" in raw_summary or len(raw_summary) < 500
+            if is_mock_response:
                 # Build structured notes directly from transcript content
                 words = doc_content.split()[:400]
                 excerpt = " ".join(words)
@@ -517,6 +520,8 @@ This note provides a structured overview of **{topic_name}**. To deepen your und
                     await db.commit()
             except Exception as db_err:
                 logger.error(f"Failed to set document status to failed: {db_err}")
+    finally:
+        _in_flight_document_ids.discard(document_id)
 
 
 async def _async_generate_podcast(podcast_id: int, user_id: str, topic: str):

@@ -111,7 +111,7 @@ class AudioService:
         
         try:
             logger.info(f"Downloading YouTube audio for {url} using command: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=90)
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=12)
             if os.path.exists(final_mp3_path):
                 logger.info(f"Successfully downloaded YouTube audio to {final_mp3_path}")
                 return final_mp3_path
