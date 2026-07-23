@@ -101,7 +101,7 @@ class AudioService:
         cmd = [
             sys.executable,
             "-m", "yt_dlp",
-            "--js-runtimes", "node",
+            "--no-playlist",
             "-x",
             "--audio-format", "mp3",
             "--audio-quality", "128K",
@@ -111,7 +111,7 @@ class AudioService:
         
         try:
             logger.info(f"Downloading YouTube audio for {url} using command: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=12)
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=120)
             if os.path.exists(final_mp3_path):
                 logger.info(f"Successfully downloaded YouTube audio to {final_mp3_path}")
                 return final_mp3_path

@@ -199,38 +199,33 @@ async def _async_process_document(document_id: int, user_id: str):
     def get_youtube_transcript(video_id: str) -> tuple[str, str]:
         try:
             from youtube_transcript_api import YouTubeTranscriptApi
-            transcript_list = YouTubeTranscriptApi().list(video_id)
-            # Prioritize native/manual transcripts first, then auto-generated
-            manual_transcripts = {}
-            generated_transcripts = {}
-            for t in transcript_list:
-                if not t.is_generated:
-                    manual_transcripts[t.language_code] = t
-                else:
-                    generated_transcripts[t.language_code] = t
+            fetched_data = None
             
-            preferred = None
-            if 'hi' in manual_transcripts:
-                preferred = manual_transcripts['hi']
-            elif 'en' in manual_transcripts:
-                preferred = manual_transcripts['en']
-            elif 'hi' in generated_transcripts:
-                preferred = generated_transcripts['hi']
-            elif 'en' in generated_transcripts:
-                preferred = generated_transcripts['en']
-            elif manual_transcripts:
-                preferred = next(iter(manual_transcripts.values()))
-            elif generated_transcripts:
-                preferred = next(iter(generated_transcripts.values()))
-            else:
-                preferred = next(iter(transcript_list))
+            # Method 1: Try direct fetch with preferred languages
+            try:
+                fetched_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['en', 'en-US', 'hi', 'hi-IN', 'es', 'fr', 'auto'])
+            except Exception as direct_err:
+                logger.info(f"Direct get_transcript failed for video {video_id}: {direct_err}. Trying list_transcripts...")
                 
-            transcript = preferred
-            logger.info(f"Selected transcript language '{transcript.language_code}' (generated={transcript.is_generated}) for video {video_id}")
-            
-            fetched_data = transcript.fetch()
+            # Method 2: Fallback to listing transcripts if direct fetch failed
+            if not fetched_data:
+                try:
+                    transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                    preferred = None
+                    for t in transcript_list:
+                        preferred = t
+                        if t.language_code in ['en', 'hi']:
+                            break
+                    if preferred:
+                        fetched_data = preferred.fetch()
+                except Exception as list_err:
+                    logger.warning(f"list_transcripts also failed for video {video_id}: {list_err}")
+
+            if not fetched_data:
+                return "", ""
+
             clean_text = " ".join([
-                (snippet.text if hasattr(snippet, "text") else snippet.get("text", "")) 
+                (snippet.text if hasattr(snippet, "text") else snippet.get("text", "")) if isinstance(snippet, object) and not isinstance(snippet, dict) else (snippet.get("text", "") if isinstance(snippet, dict) else str(snippet))
                 for snippet in fetched_data
             ])
             
@@ -387,12 +382,12 @@ async def _async_process_document(document_id: int, user_id: str):
         
         # Fallback/Default if no content obtained from transcript or file
         if not doc_content:
-            logger.info(f"No content extracted for document: {doc_name}. Using topic-based template.")
+            logger.info(f"No content extracted for document: {doc_name}. Generating topic-specific lecture framework.")
             topic = doc_name
             doc_content = (
-                f"Tutorial overview: {topic}. "
-                "This tutorial covers core programming concepts, data structures, algorithms, "
-                "and practical implementation techniques used in software development."
+                f"Comprehensive study guide and lecture overview on: {topic}.\n"
+                f"This material covers all foundational principles, core concepts, step-by-step methodologies, "
+                f"practical examples, and reference information regarding {topic}."
             )
             chunks = [doc_content]
         else:
