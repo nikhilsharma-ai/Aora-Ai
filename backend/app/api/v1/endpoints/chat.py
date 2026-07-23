@@ -63,38 +63,49 @@ async def send_chat_message(
     """
     user_id = current_user["id"]
     
-    # Verify chat thread exists or create it
-    result = await db.execute(select(Chat).where(Chat.id == chat_id, Chat.user_id == user_id))
+    # Verify chat thread exists or create it safely
+    result = await db.execute(select(Chat).where(Chat.id == chat_id))
     chat = result.scalar_one_or_none()
     if not chat:
-        chat = Chat(
-            id=chat_id,
-            user_id=user_id,
-            title=f"Note Chat Workspace",
-            persona="academic"
-        )
-        db.add(chat)
-        await db.commit()
-        await db.refresh(chat)
+        try:
+            chat = Chat(
+                id=chat_id,
+                user_id=user_id,
+                title="Note Chat Workspace",
+                persona="academic"
+            )
+            db.add(chat)
+            await db.commit()
+            await db.refresh(chat)
+        except Exception:
+            await db.rollback()
+            chat = Chat(
+                user_id=user_id,
+                title="Note Chat Workspace",
+                persona="academic"
+            )
+            db.add(chat)
+            await db.commit()
+            await db.refresh(chat)
 
     # 1. Fetch relevant document chunks from Qdrant vector space
-    similar_chunks = await vector_service.query_similar_chunks(
-        user_id=user_id,
-        query=text,
-        document_id=document_id,
-        limit=3
-    )
+    similar_chunks = []
+    try:
+        similar_chunks = await vector_service.query_similar_chunks(
+            user_id=user_id,
+            query=text,
+            document_id=document_id,
+            limit=3
+        )
+    except Exception as qerr:
+        print(f"Qdrant query failed: {qerr}")
 
     # 2. Format context text & citations
     context_str = ""
     citations = []
     for idx, chunk in enumerate(similar_chunks):
-        context_str += f"\n- Context block [{idx+1}]: {chunk['text']}"
-        citations.append({
-            "index": idx + 1,
-            "text": chunk["text"],
-            "score": chunk.get("score", 0.9)
-        })
+        if chunk.get("text"):
+            context_str += f"\n- Context block [{idx+1}]: {chunk['text']}"
 
     # 3. Formulate prompts
     if context_str:

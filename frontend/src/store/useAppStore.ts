@@ -549,18 +549,18 @@ export const useAppStore = create<AppState>((set, get) => {
       const getAiResponse = (persona: string, query: string): Partial<ChatMessage> => {
         if (persona === 'academic') {
           return {
-            text: `Here is an academic perspective on "${query}". Synthesizing current literature, this concept is highly linked to cognitive architectures and semantic mapping. Let me know if you would like me to list peer-reviewed sources or break down this logic into components.`,
-            sources: ['Nature Learning & Behavior (2025)', 'IEEE Cognitive Computing Annals'],
+            text: `Here is an academic perspective on "${query}". Synthesizing current concepts, this is closely linked to core structural principles. Let me know if you would like me to break down this logic step-by-step.`,
+            sources: [],
           };
         } else if (persona === 'tutor') {
           return {
-            text: `Great question about "${query}"! Let's think of this like a puzzle: each piece represents a small step. Let me know if you'd like a quick quiz on this or want to review the basic vocabulary first.`,
-            sources: ['Aora AI Tutor Module'],
+            text: `Great question about "${query}"! Let's break this down into simple steps so it's easy to master. What specific part would you like to explore first?`,
+            sources: [],
           };
         } else {
           return {
-            text: `I've synthesized the main points of "${query}" into an active draft. Let's outline the core sections, write a brief intro, and create flashcards from this text to test your retention later.`,
-            sources: ['User Knowledge base', 'Aora AI Summarizer'],
+            text: `Here is a clear summary of "${query}". Let's outline the core sections and key takeaways to help you study efficiently.`,
+            sources: [],
           };
         }
       };
