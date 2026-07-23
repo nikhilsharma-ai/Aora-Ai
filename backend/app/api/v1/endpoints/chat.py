@@ -88,42 +88,42 @@ async def send_chat_message(
             await db.commit()
             await db.refresh(chat)
 
-    # 1. Fetch relevant document chunks from Qdrant vector space
+    # 1. Fetch relevant document chunks from Qdrant vector space ONLY when document_id is specified
     similar_chunks = []
-    try:
-        similar_chunks = await vector_service.query_similar_chunks(
-            user_id=user_id,
-            query=text,
-            document_id=document_id,
-            limit=3
-        )
-    except Exception as qerr:
-        print(f"Qdrant query failed: {qerr}")
+    if document_id is not None:
+        try:
+            similar_chunks = await vector_service.query_similar_chunks(
+                user_id=user_id,
+                query=text,
+                document_id=document_id,
+                limit=3
+            )
+        except Exception as qerr:
+            print(f"Qdrant query failed: {qerr}")
 
     # 2. Format context text & citations
     context_str = ""
     citations = []
-    for idx, chunk in enumerate(similar_chunks):
-        if chunk.get("text"):
-            context_str += f"\n- Context block [{idx+1}]: {chunk['text']}"
+    if document_id is not None and similar_chunks:
+        for idx, chunk in enumerate(similar_chunks):
+            if chunk.get("text"):
+                context_str += f"\n- Context block [{idx+1}]: {chunk['text']}"
 
     # 3. Formulate prompts
     if context_str:
         system_prompt = (
-            "You are Aora AI, a precise and knowledgeable assistant. "
-            "Answer the user's query directly and concisely using the supplied context. "
-            "Be factual, structured, and to the point. "
-            "Use [index] citation markers only when quoting specific context blocks. "
-            "Do NOT add filler phrases or unnecessary introductions."
+            "You are Aora AI, an expert academic tutor and study companion. "
+            "Answer the user's query clearly and accurately using the supplied document context. "
+            "If the context does not fully answer the question, supplement it with your general knowledge. "
+            "Be structured, factual, and clear. Do NOT say 'there is no mention in context blocks'."
         )
-        user_prompt = f"Context:{context_str}\n\nQuestion: {text}"
+        user_prompt = f"Document Context:{context_str}\n\nUser Question: {text}"
     else:
         system_prompt = (
-            "You are Aora AI, a precise and knowledgeable assistant. "
-            "Answer the user's question directly, concisely, and accurately using your general knowledge. "
-            "Structure your answer clearly with key points. "
-            "Do NOT add filler phrases, unnecessary disclaimers, or repeat the question back. "
-            "Get straight to the answer."
+            "You are Aora AI, an intelligent academic tutor and study companion. "
+            "Answer the user's question directly, clearly, and comprehensively using your knowledge. "
+            "Structure your answer with key concepts, bullet points, and code/examples where helpful. "
+            "Never refer to context blocks or missing documents — just give a direct, expert answer."
         )
         user_prompt = text
 

@@ -105,19 +105,7 @@ class VectorService:
         """Queries collection matching user scope and optional document scope"""
         client = self._get_client()
         if not client:
-            # Return static fallback mockup details
-            return [
-                {
-                    "text": "Deep learning is part of a broader family of machine learning methods based on artificial neural networks.",
-                    "document_id": 1,
-                    "score": 0.89
-                },
-                {
-                    "text": "The transformer model introduced the self-attention mechanism, resolving recurrence bottleneck speeds.",
-                    "document_id": 1,
-                    "score": 0.81
-                }
-            ]
+            return []
 
         try:
             # Generate simulated search vector matching index size
