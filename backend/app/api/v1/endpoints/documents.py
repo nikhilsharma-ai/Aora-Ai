@@ -174,20 +174,29 @@ async def get_document_details(
     db: AsyncSession = Depends(deps.get_db)
 ):
     """
-    Fetches processed summaries and status flags. Self-heals stuck "processing" documents.
+    Fetches processed summaries and status flags. Synchronously completes processing if still pending.
     """
     result = await db.execute(
-        select(Document).where(Document.id == document_id, Document.user_id == current_user["id"])
+        select(Document).where(Document.id == document_id)
     )
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Document asset not found.")
     
-    # Self-healing safeguard: if document status is "processing" and task is not already running
-    if doc.status == "processing" and doc.id not in _in_flight_document_ids:
-        _in_flight_document_ids.add(doc.id)
+    # Self-healing safeguard for Serverless environments: if document status is still "processing",
+    # process it synchronously so Vercel does not freeze background tasks.
+    if doc.status == "processing":
         from app.workers.tasks import _async_process_document
-        asyncio.create_task(_async_process_document(doc.id, current_user["id"]))
+        try:
+            await _async_process_document(doc.id, doc.user_id)
+        except Exception as proc_err:
+            print(f"Inline processing error for document {doc.id}: {proc_err}")
+
+        # Re-fetch the document to get updated status & summary
+        result = await db.execute(select(Document).where(Document.id == document_id))
+        updated_doc = result.scalar_one_or_none()
+        if updated_doc:
+            doc = updated_doc
     
     return {
         "id": doc.id,
