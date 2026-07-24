@@ -54,30 +54,32 @@ async def upload_document(
     user_id = current_user["id"]
     
     upload_url = file_url
-    if doc_type == "youtube" and upload_url and (not name or name in ("Website link", "YouTube or website link", "YouTube link", "Link", "New Website note", "New YouTube note")):
-        try:
-            import httpx
-            import re
-            if "youtube.com" in upload_url or "youtu.be" in upload_url:
-                oembed_url = f"https://www.youtube.com/oembed?url={upload_url}&format=json"
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(oembed_url, timeout=5.0)
-                    if response.status_code == 200:
-                        data = response.json()
-                        resolved_title = data.get("title")
-                        if resolved_title:
-                            name = resolved_title
-            else:
-                async with httpx.AsyncClient(follow_redirects=True) as client:
-                    response = await client.get(upload_url, timeout=5.0, headers={"User-Agent": "Mozilla/5.0"})
-                    if response.status_code == 200:
-                        match = re.search(r"<title>(.*?)</title>", response.text, re.IGNORECASE | re.DOTALL)
-                        if match:
-                            title_text = match.group(1).strip()
-                            title_text = re.sub(r"\s+", " ", title_text)
-                            name = title_text
-        except Exception:
-            pass
+    if doc_type == "youtube" and upload_url:
+        is_placeholder_name = (not name) or any(p in name.lower() for p in ["website", "youtube", "link", "e.g.", "crash course", "new note"])
+        if is_placeholder_name:
+            try:
+                import httpx
+                import re
+                if "youtube.com" in upload_url or "youtu.be" in upload_url:
+                    oembed_url = f"https://www.youtube.com/oembed?url={upload_url}&format=json"
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(oembed_url, timeout=5.0)
+                        if response.status_code == 200:
+                            data = response.json()
+                            resolved_title = data.get("title")
+                            if resolved_title:
+                                name = resolved_title
+                else:
+                    async with httpx.AsyncClient(follow_redirects=True) as client:
+                        response = await client.get(upload_url, timeout=5.0, headers={"User-Agent": "Mozilla/5.0"})
+                        if response.status_code == 200:
+                            match = re.search(r"<title>(.*?)</title>", response.text, re.IGNORECASE | re.DOTALL)
+                            if match:
+                                title_text = match.group(1).strip()
+                                title_text = re.sub(r"\s+", " ", title_text)
+                                name = title_text
+            except Exception:
+                pass
 
     import tempfile
     import os

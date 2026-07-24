@@ -356,6 +356,10 @@ function CreateModal({ type, onClose, activeFolderName }: { type: ModalType; onC
 
         if (fetchedTitle) {
           setTitle(fetchedTitle);
+        } else if (targetUrl.includes('youtube.com') || targetUrl.includes('youtu.be')) {
+          setTitle('YouTube Video');
+        } else {
+          setTitle('Web Resource');
         }
       } catch (err: any) {
         if (err.name !== 'AbortError') {
@@ -366,7 +370,8 @@ function CreateModal({ type, onClose, activeFolderName }: { type: ModalType; onC
       }
     };
 
-    const timer = setTimeout(fetchTitle, 500);
+    const isYoutube = targetUrl.includes('youtube.com') || targetUrl.includes('youtu.be');
+    const timer = setTimeout(fetchTitle, isYoutube ? 50 : 300);
 
     return () => {
       clearTimeout(timer);
@@ -421,7 +426,7 @@ function CreateModal({ type, onClose, activeFolderName }: { type: ModalType; onC
     const noteTags = activeFolderName ? [type, activeFolderName] : [type];
 
     if (type === 'website') {
-      const noteTitle = title.trim() || cfg.placeholder;
+      const noteTitle = title.trim() || (url.includes('youtu') ? 'YouTube Video' : 'Web Page');
       let finalUrl = url.trim();
       if (finalUrl && !finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
         finalUrl = 'https://' + finalUrl;
