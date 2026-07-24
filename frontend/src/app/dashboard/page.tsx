@@ -324,14 +324,38 @@ function CreateModal({ type, onClose, activeFolderName }: { type: ModalType; onC
     const fetchTitle = async () => {
       setIsFetchingTitle(true);
       try {
-        const res = await fetch(`${API_URL}/documents/fetch-title?url=${encodeURIComponent(targetUrl)}`, {
-          signal: controller.signal
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.title && data.title !== 'Web Resource') {
-            setTitle(data.title);
+        let fetchedTitle = '';
+
+        // 1. Direct client-side YouTube oEmbed lookup (Instant & 100% reliable in browser)
+        if (targetUrl.includes('youtube.com') || targetUrl.includes('youtu.be')) {
+          try {
+            const ytRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(targetUrl)}&format=json`);
+            if (ytRes.ok) {
+              const ytData = await ytRes.json();
+              if (ytData.title) {
+                fetchedTitle = ytData.title;
+              }
+            }
+          } catch (e) {
+            // Ignore & fallback to backend
           }
+        }
+
+        // 2. Fallback to backend fetch-title endpoint for general websites or if YouTube client fetch failed
+        if (!fetchedTitle) {
+          const res = await fetch(`${API_URL}/documents/fetch-title?url=${encodeURIComponent(targetUrl)}`, {
+            signal: controller.signal
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.title && data.title !== 'Web Resource') {
+              fetchedTitle = data.title;
+            }
+          }
+        }
+
+        if (fetchedTitle) {
+          setTitle(fetchedTitle);
         }
       } catch (err: any) {
         if (err.name !== 'AbortError') {
