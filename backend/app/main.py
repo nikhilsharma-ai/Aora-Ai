@@ -13,7 +13,7 @@ app = FastAPI(
 # Set all CORS enabled origins
 origins = [str(origin).strip("/") for origin in settings.BACKEND_CORS_ORIGINS]
 origins.extend([
-    "https://aora-ai-3eqj-six.vercel.app",
+    "https://aora-ai-six.vercel.app",
     "http://localhost:3000"
 ])
 
