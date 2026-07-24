@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAppStore, Note } from '@/store/useAppStore';
+import { getApiUrl } from '@/store/api';
 import { useToast } from '@/components/ui/toast';
 import { useRouter } from 'next/navigation';
 import { NoteSettingsModal } from '@/components/ui/note-settings-modal';
@@ -102,7 +103,7 @@ const FontSizeExt = Extension.create({
   },
 });
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const API_URL = getApiUrl();
 
 // ─── Custom Code Block NodeView — Notion-style ───────────────────────────────
 const LANGUAGES = [

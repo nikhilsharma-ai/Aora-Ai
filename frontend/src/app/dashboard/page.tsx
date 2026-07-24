@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAppStore, Note, Folder } from '@/store/useAppStore';
+import { getApiUrl } from '@/store/api';
 import {
   FileText,
   Mic,
@@ -317,7 +318,7 @@ function CreateModal({ type, onClose, activeFolderName }: { type: ModalType; onC
       targetUrl = 'https://' + targetUrl;
     }
 
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+    const API_URL = getApiUrl();
     const controller = new AbortController();
 
     const fetchTitle = async () => {

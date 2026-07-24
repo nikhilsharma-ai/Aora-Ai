@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getApiUrl } from './api';
 
 export interface Note {
   id: string;
@@ -176,7 +177,7 @@ interface AppState {
   initializeStore: () => void;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const API_URL = getApiUrl();
 
 const getInitialAuthState = () => {
   return {

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAppStore } from '@/store/useAppStore';
+import { getApiUrl } from '@/store/api';
 import { useUser, useAuth } from '@clerk/nextjs';
 import { useToast } from '@/components/ui/toast';
 import {
@@ -16,7 +17,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const API_URL = getApiUrl();
 
 export default function CheckoutPage() {
   const router = useRouter();
