@@ -1386,7 +1386,8 @@ export default function NotesWorkspace() {
       const docId = await syncNoteToAiIfNeeded();
 
       // 2. Query chat message endpoint with the active docId
-      const url = new URL(`${API_URL}/chat/threads/1/messages`);
+      const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+      const url = new URL(`${API_URL}/chat/threads/1/messages`, baseUrl);
       url.searchParams.append('text', userMsg);
       if (docId) {
         url.searchParams.append('document_id', docId.toString());
@@ -1446,7 +1447,8 @@ export default function NotesWorkspace() {
         return;
       }
 
-      const url = new URL(`${API_URL}/study/quizzes/generate`);
+      const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+      const url = new URL(`${API_URL}/study/quizzes/generate`, baseUrl);
       url.searchParams.set('document_id', String(docId));
       url.searchParams.set('title', `Quiz: ${activeNote.title}`);
       url.searchParams.set('category', 'AI Generated');
